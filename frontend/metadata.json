@@ -1,0 +1,5 @@
+{
+  "name": "Classroom Gacha",
+  "description": "A gamified classroom management tool that uses a Gacha system to randomly select students for questions, featuring rarity levels, experience tracking, and interactive animations.",
+  "requestFramePermissions": []
+}
