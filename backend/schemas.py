@@ -6,6 +6,7 @@ class StudentBase(BaseModel):
     dorm_number: Optional[str] = None
     stars: int = 0
     pick_count: int = 0
+    immunity: int = 0
 
 class StudentCreate(StudentBase):
     pass

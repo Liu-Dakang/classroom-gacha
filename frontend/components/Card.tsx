@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Star } from 'lucide-react';
+import { Star, Shield } from 'lucide-react';
 import { RARITY_CONFIG } from '../constants';
 import { Student, RarityLevel } from '../types';
 import Particles from './Particles';
@@ -97,11 +97,25 @@ const Card: React.FC<CardProps> = ({
   return (
     <div className={`
       relative ${sizeClasses} rounded-xl border-4 transition-all duration-500
-      ${config.bg} ${config.border} ${config.shadow} shadow-lg
+      ${student.immunity > 0 ? 'border-cyan-400 bg-slate-900 shadow-[0_0_20px_rgba(34,211,238,0.8)] scale-[1.02]' : `${config.border} ${config.bg} ${config.shadow} shadow-lg`} 
       ${size === 'small' ? 'flex justify-between' : 'flex flex-col items-center justify-center'}
       ${isHolo ? 'animate-holo-shine overflow-hidden' : ''}
       ${className}
     `}>
+      {/* Immunity Strong Overlay & Text */}
+      {student.immunity > 0 && (
+        <>
+          <div className={`absolute inset-0 bg-cyan-500/30 backdrop-blur-[2px] z-10 animate-pulse pointer-events-none rounded-xl border-2 border-cyan-200/50`}></div>
+          <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+            <span className={`
+                    font-black italic text-cyan-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-widest bg-cyan-900/80 px-2 py-1 transform -rotate-12 border border-cyan-400
+                    ${size === 'small' ? 'text-xs' : 'text-2xl'}
+                `}>
+              隐身中 x {student.immunity}
+            </span>
+          </div>
+        </>
+      )}
       {/* Holo effect for 5 stars */}
       {isHolo && (
         <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent w-[200%] h-full -translate-x-full animate-shimmer pointer-events-none"></div>

@@ -2,7 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
-import models, schemas, database
+import models, schemas
+from database import SessionLocal, engine
 import pandas as pd
 import io
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,27 +11,35 @@ from fastapi.staticfiles import StaticFiles
 import random
 import os
 import sys
+from sqlalchemy import text # Import text for raw sql
 
-models.Base.metadata.create_all(bind=database.engine)
+models.Base.metadata.create_all(bind=engine)
+
+# Helper to ensure column exists (Migration hack for SQLite)
+def check_db_schema():
+    db = SessionLocal()
+    try:
+        # Check if immunity column exists by trying to select it
+        try:
+            db.execute(text("SELECT immunity FROM students LIMIT 1"))
+        except Exception:
+            print("adding immunity column...")
+            db.execute(text("ALTER TABLE students ADD COLUMN immunity INTEGER DEFAULT 0"))
+            db.commit()
+    except Exception as e:
+        print(f"Schema check error: {e}")
+    finally:
+        db.close()
+
+check_db_schema()
 
 app = FastAPI()
 
+# --- Helpers ---
 def get_frontend_path():
-    # Check for PyInstaller path
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, "dist")
-    
-    # Check for local dev path (relative to this file)
-    dev_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
-    if os.path.exists(dev_path):
-        return dev_path
-        
-    # Check ../frontend/dist
-    dev_path_2 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
-    if os.path.exists(dev_path_2):
-        return dev_path_2
-        
-    return None
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, "static")
+    return "static"
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,10 +50,11 @@ app.add_middleware(
 )
 
 # Mount static files for images
+# Mount static files for images
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 def get_db():
-    db = database.SessionLocal()
+    db = SessionLocal()
     try:
         yield db
     finally:
@@ -55,6 +65,23 @@ def get_db():
 def read_students(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
     students = db.query(models.Student).all()
     return students
+
+@app.put("/students/{student_id}/immunity")
+def update_student_immunity(student_id: int, immunity: int, db: Session = Depends(get_db)):
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    student.immunity = immunity
+    db.commit()
+    db.refresh(student)
+    return student
+
+@app.post("/advance_turn")
+def advance_turn(db: Session = Depends(get_db)):
+    # Decrement immunity for all students where immunity > 0
+    db.execute(text("UPDATE students SET immunity = immunity - 1 WHERE immunity > 0"))
+    db.commit()
+    return {"message": "Turn advanced"}
 
 @app.put("/students/{student_id}", response_model=schemas.Student)
 def update_student(student_id: int, student: schemas.StudentCreate, db: Session = Depends(get_db)):
@@ -124,21 +151,40 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
 
 # --- Items ---
 
+@app.get("/items", response_model=List[schemas.ItemCard])
+def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    items = db.query(models.ItemCard).offset(skip).limit(limit).all()
+    return items
+
 @app.post("/students/{student_id}/draw_item", response_model=schemas.ItemCard)
-def draw_item_for_student(student_id: int, db: Session = Depends(get_db)):
+def draw_item_for_student(student_id: int, pool_type: str = "normal", db: Session = Depends(get_db)):
     # Verify student exists
     student = db.query(models.Student).filter(models.Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
     # Get all item cards
-    # If using weights, we'd implement that here. For now, random uniform.
     items = db.query(models.ItemCard).all()
     if not items:
-        # Fallback if DB not seeded
         raise HTTPException(status_code=404, detail="No items available in card pool")
 
-    drawn_item = random.choice(items)
+    # Filter by pool type
+    if pool_type == "negative":
+        # Negative cards: "群体沉默", "末日审判"
+        neg_names = ["群体沉默", "末日审判"]
+        candidate_items = [i for i in items if i.name in neg_names]
+        
+        # Fallback: if no negative cards found, use all items (or handle error)
+        if not candidate_items:
+             candidate_items = items 
+    else:
+        # Normal pool: Exclude negative cards
+        neg_names = ["群体沉默", "末日审判"]
+        candidate_items = [i for i in items if i.name not in neg_names]
+        if not candidate_items:
+             candidate_items = items
+
+    drawn_item = random.choice(candidate_items)
 
     # Add to student inventory
     student_item = models.StudentItem(student_id=student_id, item_card_id=drawn_item.id)
@@ -164,7 +210,7 @@ def use_student_item(item_id: int, db: Session = Depends(get_db)):
 # --- Initialization Script Endpoint (Optional, or run on startup) ---
 # We'll just run a function on startup to seed if empty
 def seed_items_from_excel():
-    db = database.SessionLocal()
+    db = SessionLocal()
     try:
         # Check if items exist
         if db.query(models.ItemCard).count() > 0:
@@ -205,7 +251,109 @@ def seed_items_from_excel():
     finally:
         db.close()
 
+def ensure_special_cards_exist():
+    """Ensure specific cards like Doomsday exist even if not in Excel"""
+    db = SessionLocal()
+    try:
+        # Check Doomsday
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "末日审判").first():
+            item = models.ItemCard(
+                name="末日审判",
+                description="全班所有学生星级 -1。",
+                function_desc="Doomsday Judgment: All students lose 1 star.",
+                image_path="" # No image specified, fontend will handle or empty
+            )
+            db.add(item)
+            print("Added missing card: 末日审判")
+        
+        # Check Mass Silence
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "群体沉默").first():
+            item = models.ItemCard(
+                name="群体沉默",
+                description="同宿舍所有学生星级 -1。",
+                function_desc="Mass Silence: Dormmates lose 1 star.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 群体沉默")
+
+        # Check Legion Glory
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "军团荣耀").first():
+            item = models.ItemCard(
+                name="军团荣耀",
+                description="同宿舍所有学生星级 +1。",
+                function_desc="Legion Glory: Dormmates gain 1 star.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 军团荣耀")
+
+        # Check Shadow Raid
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "暗影突袭").first():
+            item = models.ItemCard(
+                name="暗影突袭",
+                description="随机扣除一人1星。",
+                function_desc="Shadow Raid: Randomly deduct 1 star from one person.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 暗影突袭")
+
+        # Check Berserker Trial
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "狂战士试炼").first():
+            item = models.ItemCard(
+                name="狂战士试炼",
+                description="随机挑选一名勇士，完成20个俯卧撑后得1星。",
+                function_desc="Berserker Trial: Random person does 20 pushups for 1 star.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 狂战士试炼")
+
+        # Check Mana Drain
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "法力汲取").first():
+            item = models.ItemCard(
+                name="法力汲取",
+                description="随机汲取一人2星，若不足2星则反噬扣1星。",
+                function_desc="Mana Drain: Steal 2 stars, or lose 1 if target has < 2.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 法力汲取")
+            
+            db.add(item)
+            print("Added missing card: 法力汲取")
+
+        # Check Stealth Cloak
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "潜行斗篷").first():
+            item = models.ItemCard(
+                name="潜行斗篷",
+                description="接下来3次抽取，不在名单中。",
+                function_desc="Stealth Cloak: Immune for next 3 draws.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 潜行斗篷")
+
+        # Check Barrier Sanctuary
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "结界：庇护所").first():
+            item = models.ItemCard(
+                name="结界：庇护所",
+                description="宿舍全员下一次抽取将不在名单中。",
+                function_desc="Barrier Sanctuary: Dormmates immune for next 1 draw.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 结界：庇护所")
+            
+        db.commit()
+    except Exception as e:
+        print(f"Error checking special cards: {e}")
+    finally:
+        db.close()
+
 seed_items_from_excel()
+ensure_special_cards_exist()
 
 # --- Frontend Static Serving ---
 frontend_path = get_frontend_path()

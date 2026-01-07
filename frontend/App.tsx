@@ -1,6 +1,18 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Sparkles, Star, Trophy, RefreshCw, Award, BarChart3, Users, Download, Upload, ThumbsDown, X, Trash2 } from 'lucide-react';
 import Card from './components/Card';
+import ShieldEffect from './components/ShieldEffect';
+import MarkTargetEffect from './components/MarkTargetEffect';
+import ExpPotionEffect from './components/ExpPotionEffect';
+import MassSilenceEffect from './components/MassSilenceEffect';
+import DoomsdayEffect from './components/DoomsdayEffect';
+import LegionGloryEffect from './components/LegionGloryEffect';
+import ShadowRaidEffect from './components/ShadowRaidEffect';
+import BerserkerTrialEffect from './components/BerserkerTrialEffect';
+import ManaDrainEffect from './components/ManaDrainEffect';
+import StealthCloakEffect from './components/StealthCloakEffect';
+import SanctuaryEffect from './components/SanctuaryEffect';
+import RouletteEffect from './components/RouletteEffect';
 import { RARITY_CONFIG } from './constants';
 import { Student, RarityLevel, Stats, ItemCard as ItemCardType, StudentItem } from './types';
 import ItemCard from './components/ItemCard';
@@ -26,7 +38,8 @@ export default function App() {
           name: s.name,
           dormNumber: s.dorm_number,
           stars: s.stars,
-          pickCount: s.pick_count // Map pick_count to pickCount
+          pickCount: s.pick_count,
+          immunity: s.immunity || 0
         }));
         setStudents(mappedStudents);
       }
@@ -49,6 +62,14 @@ export default function App() {
   const [studentItems, setStudentItems] = useState<StudentItem[]>([]);
   const [previewItem, setPreviewItem] = useState<StudentItem | null>(null);
   const [isInteractionComplete, setIsInteractionComplete] = useState(false);
+  const [activeEffect, setActiveEffect] = useState<string | null>(null);
+  const [pendingItemId, setPendingItemId] = useState<number | null>(null);
+
+  // Roulette State
+  const [showRoulette, setShowRoulette] = useState(false);
+  const [rouletteItems, setRouletteItems] = useState<ItemCardType[]>([]);
+  const [pendingDrawnItem, setPendingDrawnItem] = useState<ItemCardType | null>(null);
+  const [pendingTargetStudentId, setPendingTargetStudentId] = useState<number | null>(null);
 
   // File input ref for import
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,29 +123,269 @@ export default function App() {
     }
   };
 
-  const drawItem = async (studentId: number) => {
+  const fetchAllItems = async () => {
     try {
-      const response = await fetch(`${API_URL}/students/${studentId}/draw_item`, { method: 'POST' });
+      const response = await fetch(`${API_URL}/items`);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (error) {
+      console.error("Failed to fetch items pool:", error);
+    }
+    return [];
+  };
+
+  const drawItem = async (studentId: number, poolType: string = 'normal') => {
+    try {
+      const response = await fetch(`${API_URL}/students/${studentId}/draw_item?pool_type=${poolType}`, { method: 'POST' });
       if (response.ok) {
         const item = await response.json();
-        setDrawnItem(item);
-        setShowItemModal(true);
-        fetchStudentItems(studentId); // Refresh inventory
+        // Prepare Roulette
+        const pool = await fetchAllItems();
+        setRouletteItems(pool);
+        setPendingDrawnItem(item);
+        setPendingTargetStudentId(studentId);
+        setShowRoulette(true);
       }
     } catch (error) {
       console.error("Failed to draw item:", error);
     }
   };
 
-  const useItem = async (itemId: number) => {
-    if (!window.confirm("确认使用这张卡片吗？使用后将销毁。")) return;
+  const handleRouletteComplete = () => {
+    setShowRoulette(false);
+    if (!pendingDrawnItem || !pendingTargetStudentId) return;
+
+    const item = pendingDrawnItem;
+    const studentId = pendingTargetStudentId;
+
+    if (item.name === "群体沉默") {
+      setDrawnItem(item);
+      setActiveEffect("mass_silence");
+      fetchStudentItems(studentId);
+    } else if (item.name === "末日审判") {
+      setDrawnItem(item);
+      setActiveEffect("doomsday");
+      fetchStudentItems(studentId);
+    } else {
+      setDrawnItem(item);
+      setShowItemModal(true);
+      fetchStudentItems(studentId);
+    }
+
+    setPendingDrawnItem(null);
+    setPendingTargetStudentId(null);
+  };
+
+  const executeUseItem = async (itemId: number) => {
     try {
       await fetch(`${API_URL}/student_items/${itemId}`, { method: 'DELETE' });
       setStudentItems(prev => prev.filter(i => i.id !== itemId));
-      alert("卡片已使用！");
     } catch (error) {
       console.error("Failed to use item:", error);
     }
+  };
+
+  const useItem = async (studentItem: StudentItem) => {
+    if (!window.confirm("确认使用这张卡片吗？使用后将销毁。")) return;
+
+    if (studentItem.item_card.name === "绝对防御") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("shield");
+    } else if (studentItem.item_card.name === "标记目标") {
+      // Logic for "Mark Target":
+      // 1. Trigger Effect UI (Random Shuffle)
+      // 2. Effect calls back with new student
+      // 3. We REPLACE the currently drawn student with this new one
+      // 4. Then we consume the item.
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("mark_target");
+    } else if (studentItem.item_card.name === "经验药水") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("exp_potion");
+    } else if (studentItem.item_card.name === "军团荣耀") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("legion_glory");
+    } else if (studentItem.item_card.name === "暗影突袭") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("shadow_raid");
+    } else if (studentItem.item_card.name === "狂战士试炼") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("berserker_trial");
+    } else if (studentItem.item_card.name === "法力汲取") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("mana_drain");
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("mana_drain");
+    } else if (studentItem.item_card.name === "潜行斗篷") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("stealth_cloak");
+    } else if (studentItem.item_card.name === "结界：庇护所") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("sanctuary");
+    } else {
+      await executeUseItem(studentItem.id);
+      setPreviewItem(null);
+      alert("卡片已使用！");
+    }
+  };
+
+  const handleEffectComplete = async (payload?: any) => {
+    if (activeEffect === "mark_target" && payload) {
+      setDrawnStudent(payload);
+      fetchStudentItems(payload.id);
+    }
+
+    if (activeEffect === "exp_potion") {
+      if (drawnStudent) {
+        handleManualStarChange(drawnStudent.id, 1);
+      } else if (manualSelection) {
+        handleManualStarChange(manualSelection.id, 1);
+      }
+    }
+
+    if (activeEffect === "mass_silence") {
+      if (drawnStudent && drawnStudent.dormNumber) {
+        // Find all students in same dorm
+        const dormMates = students.filter(s => s.dormNumber === drawnStudent.dormNumber);
+
+        // Deduct 1 star for each (min 0)
+        // We use loop to update backend for each
+        // Note: Parallel requests might be heavy? But it's small scale.
+        dormMates.forEach(mate => {
+          handleManualStarChange(mate.id, -1);
+        });
+      }
+
+      // Try to delete the silence card from inventory if it exists
+      // We need to find the student_item id.
+      // Since we refreshed inventory in drawItem, studentItems should have it?
+      // Wait, handleEffectComplete is called AFTER invalidation? 
+      // studentItems state might not be updated immediately in this closure if we didn't wait.
+      // But for visual effect duration (3.5s) it should be enough time for state update / refetch.
+      // Actually state updates are async.
+      // Let's just re-fetch in drawItem and hope it is here.
+      // Or we can just do a precise search.
+
+      // Simplest strategy: Fetch items again, find "群体沉默", delete it.
+      // We use the API directly to avoid state dependency issues if possible, or use current state.
+      if (drawnStudent) {
+        try {
+          const res = await fetch(`${API_URL}/students/${drawnStudent.id}/items`);
+          if (res.ok) {
+            const items: StudentItem[] = await res.json();
+            const silenceItem = items.find(i => i.item_card.name === "群体沉默");
+            if (silenceItem) {
+              await executeUseItem(silenceItem.id);
+            }
+          }
+        } catch (e) { console.error(e); }
+      }
+    }
+
+    if (activeEffect === "doomsday") {
+      // Deduct 1 star from EVERYONE
+      students.forEach(s => {
+        handleManualStarChange(s.id, -1);
+      });
+
+      // Try to delete item from inventory (similar logic to mass silence)
+      if (drawnStudent) {
+        try {
+          const res = await fetch(`${API_URL}/students/${drawnStudent.id}/items`);
+          if (res.ok) {
+            const items: StudentItem[] = await res.json();
+            const doomItem = items.find(i => i.item_card.name === "末日审判");
+            if (doomItem) {
+              await executeUseItem(doomItem.id);
+            }
+          }
+        } catch (e) { console.error(e); }
+      }
+    }
+
+    if (activeEffect === "legion_glory") {
+      const student = drawnStudent || manualSelection;
+      if (student && student.dormNumber) {
+        const dormMates = students.filter(s => s.dormNumber === student.dormNumber);
+        dormMates.forEach(mate => {
+          handleManualStarChange(mate.id, 1);
+        });
+      }
+    }
+
+    if (activeEffect === "shadow_raid" && payload) {
+      // Payload is the victim student
+      handleManualStarChange(payload.id, -1);
+    }
+
+    if (activeEffect === "berserker_trial" && payload) {
+      // Payload is the winner student
+      handleManualStarChange(payload.id, 1);
+    }
+
+    if (activeEffect === "mana_drain" && payload) {
+      // Payload: { success: boolean, target: Student }
+      // We also need the USER (drawnStudent or manualSelection)
+      // Priority: If manual modal is open (manualSelection), use that. Otherwise use drawnStudent.
+      const user = manualSelection || drawnStudent;
+      if (!user) return; // Should not happen
+
+      if (payload.success) {
+        // Success: Target -2, User +2
+        handleManualStarChange(payload.target.id, -2);
+        handleManualStarChange(user.id, 2);
+      } else {
+        // Fail: User -1
+        handleManualStarChange(user.id, -1);
+      }
+    }
+
+    // Stealth Cloak logic
+    if (activeEffect === "stealth_cloak") {
+      const user = drawnStudent || manualSelection;
+      if (user) {
+        try {
+          await fetch(`${API_URL}/students/${user.id}/immunity?immunity=3`, { method: 'PUT' });
+          // We delay fetch just a bit or assume handleDraw next time will get fresh data
+        } catch (e) { console.error(e); }
+      }
+    }
+
+    // Sanctuary logic
+    if (activeEffect === "sanctuary") {
+      const user = drawnStudent || manualSelection;
+      if (user && user.dormNumber) {
+        const dormMates = students.filter(s => s.dormNumber === user.dormNumber);
+        for (const mate of dormMates) {
+          const newImmunity = Math.max(mate.immunity || 0, 1);
+          try {
+            await fetch(`${API_URL}/students/${mate.id}/immunity?immunity=${newImmunity}`, { method: 'PUT' });
+          } catch (e) { console.error(e); }
+        }
+      }
+    }
+
+    // If item was used from inventory (pendingItemId is set)
+    if (pendingItemId) {
+      await executeUseItem(pendingItemId);
+      setPendingItemId(null);
+    }
+
+    // Always refresh students to get backend updates (stars, immunity, inventory items if needed)
+    setTimeout(fetchStudents, 500);
+
+    setActiveEffect(null);
   };
 
   const handleExport = () => {
@@ -188,8 +449,8 @@ export default function App() {
     setStudentItems([]);
     setIsInteractionComplete(false);
 
-    // 1. Priority Pool: Never picked students
-    const neverPicked = students.filter(s => s.pickCount === 0);
+    // 1. Priority Pool: Never picked students AND NOT IMMUNE
+    const neverPicked = students.filter(s => s.pickCount === 0 && (!s.immunity || s.immunity <= 0));
 
     let targetId: number;
 
@@ -198,10 +459,10 @@ export default function App() {
       const randomIndex = Math.floor(Math.random() * neverPicked.length);
       targetId = neverPicked[randomIndex].id;
     } else {
-      // 2. Weighted Pool: Lower stars = Higher weight (protect high star students)
+      // 2. Weighted Pool: Lower stars = Higher weight, exclude immune
       // Weight formula: 60 / (stars + 1)
       let weightedPool: number[] = [];
-      students.forEach(student => {
+      students.filter(s => !s.immunity || s.immunity <= 0).forEach(student => {
         const weight = Math.floor(60 / (student.stars + 1));
         for (let i = 0; i < weight; i++) {
           weightedPool.push(student.id);
@@ -261,20 +522,29 @@ export default function App() {
       setDrawnStudent(prev => prev ? ({ ...prev, stars: prev.stars + 1 }) : null);
       setShowLevelUp(true);
 
-      // Draw Item Chance (Always draw for now as per requirement "when answer correct")
+      // Draw Item Chance (Normal)
       if (drawnStudent) {
         setTimeout(() => {
-          drawItem(drawnStudent.id);
+          drawItem(drawnStudent.id, 'normal');
         }, 1000);
       }
-
-      // Auto close result panel after 2s (will show item modal over it if needed, or close result first?)
-      // User flow: Correct -> Level Up Anim -> Item Modal -> Stay on screen
-      // setTimeout(() => closeResult(), 2000); // Removed auto-close
       setIsInteractionComplete(true);
     } else {
+      // Wrong Answer / Skip
+      // If Wrong (starChange < 0), draw NEGATIVE card
+      if (starChange < 0 && drawnStudent) {
+        setTimeout(() => {
+          drawItem(drawnStudent.id, 'negative');
+        }, 500);
+      }
       setIsInteractionComplete(true);
     }
+
+    // Advance Turn logic: Decrement immunity for everyone
+    // We do this after interaction is complete (user response recorded)
+    fetch(`${API_URL}/advance_turn`, { method: 'POST' })
+      .then(() => fetchStudents()) // Refresh to get updated immunities
+      .catch(err => console.error("Failed to advance turn", err));
   };
 
   const closeResult = () => {
@@ -513,7 +783,7 @@ export default function App() {
             `}
           >
             <Card
-              student={drawnStudent || { id: -1, stars: 0, name: '???', pickCount: 0 }}
+              student={drawnStudent || { id: -1, stars: 0, name: '???', pickCount: 0, immunity: 0 }}
               isRevealed={showResult}
               size="large"
             />
@@ -727,7 +997,7 @@ export default function App() {
             onClick={e => e.stopPropagation()}
           >
             <div className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
-              ITEM GET!
+              获得卡牌！
             </div>
 
             <ItemCard item={drawnItem} size="large" showDetails={true} />
@@ -766,8 +1036,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
-                    useItem(previewItem.id);
-                    setPreviewItem(null);
+                    useItem(previewItem);
                   }}
                   className="px-8 py-2 rounded-full bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 transition-transform hover:scale-105"
                 >
@@ -779,6 +1048,45 @@ export default function App() {
         </div>
       )}
 
+      {showRoulette && pendingDrawnItem && (
+        <RouletteEffect
+          items={rouletteItems}
+          finalItem={pendingDrawnItem}
+          onComplete={handleRouletteComplete}
+        />
+      )}
+      {activeEffect === 'shield' && <ShieldEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'mark_target' && (
+        <MarkTargetEffect
+          students={students.filter(s => s.id !== drawnStudent?.id)} // Exclude current student? Or include? Usually replace means someone else.
+          onComplete={(victim) => handleEffectComplete(victim)}
+        />
+      )}
+      {activeEffect === 'exp_potion' && <ExpPotionEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'mass_silence' && <MassSilenceEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'doomsday' && <DoomsdayEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'legion_glory' && <LegionGloryEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'shadow_raid' && (
+        <ShadowRaidEffect
+          students={students}
+          onComplete={(victim) => handleEffectComplete(victim)}
+        />
+      )}
+      {activeEffect === 'berserker_trial' && (
+        <BerserkerTrialEffect
+          students={students}
+          onComplete={(winner) => handleEffectComplete(winner)}
+        />
+      )}
+      {activeEffect === 'mana_drain' && (
+        <ManaDrainEffect
+          user={drawnStudent || manualSelection!}
+          students={students}
+          onComplete={(result) => handleEffectComplete(result)}
+        />
+      )}
+      {activeEffect === 'stealth_cloak' && <StealthCloakEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'sanctuary' && <SanctuaryEffect onComplete={() => handleEffectComplete()} />}
     </div>
   );
 }

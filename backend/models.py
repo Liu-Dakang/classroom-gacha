@@ -10,6 +10,7 @@ class Student(Base):
     dorm_number = Column(String, nullable=True)
     stars = Column(Integer, default=0)
     pick_count = Column(Integer, default=0)
+    immunity = Column(Integer, default=0)
 
     items = relationship("StudentItem", back_populates="student", cascade="all, delete-orphan")
 

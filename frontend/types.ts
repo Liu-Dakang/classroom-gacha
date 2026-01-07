@@ -4,6 +4,7 @@ export interface Student {
   dormNumber?: string;
   stars: number;
   pickCount: number;
+  immunity: number;
 }
 
 export interface RarityConfigItem {
