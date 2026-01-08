@@ -12,6 +12,7 @@ import BerserkerTrialEffect from './components/BerserkerTrialEffect';
 import ManaDrainEffect from './components/ManaDrainEffect';
 import StealthCloakEffect from './components/StealthCloakEffect';
 import SanctuaryEffect from './components/SanctuaryEffect';
+import UniversalSalvationEffect from './components/UniversalSalvationEffect';
 import RouletteEffect from './components/RouletteEffect';
 import { RARITY_CONFIG } from './constants';
 import { Student, RarityLevel, Stats, ItemCard as ItemCardType, StudentItem } from './types';
@@ -233,6 +234,13 @@ export default function App() {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("sanctuary");
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("sanctuary");
+    } else if (studentItem.item_card.name === "普渡众生") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("universal_salvation");
     } else {
       await executeUseItem(studentItem.id);
       setPreviewItem(null);
@@ -375,246 +383,254 @@ export default function App() {
         }
       }
     }
+  }
 
-    // If item was used from inventory (pendingItemId is set)
-    if (pendingItemId) {
-      await executeUseItem(pendingItemId);
-      setPendingItemId(null);
-    }
+  // Universal Salvation
+  if (activeEffect === "universal_salvation") {
+    students.forEach(s => {
+      handleManualStarChange(s.id, 1);
+    });
+  }
 
-    // Always refresh students to get backend updates (stars, immunity, inventory items if needed)
-    setTimeout(fetchStudents, 500);
+  // If item was used from inventory (pendingItemId is set)
+  if (pendingItemId) {
+    await executeUseItem(pendingItemId);
+    setPendingItemId(null);
+  }
 
-    setActiveEffect(null);
-  };
+  // Always refresh students to get backend updates (stars, immunity, inventory items if needed)
+  setTimeout(fetchStudents, 500);
 
-  const handleExport = () => {
-    const dataStr = JSON.stringify(students, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const date = new Date().toISOString().split('T')[0];
-    link.href = url;
-    link.download = `classroom_gacha_backup_${date}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
+  setActiveEffect(null);
+};
 
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+const handleExport = () => {
+  const dataStr = JSON.stringify(students, null, 2);
+  const blob = new Blob([dataStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const date = new Date().toISOString().split('T')[0];
+  link.href = url;
+  link.download = `classroom_gacha_backup_${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
 
-    if (!window.confirm('确认导入该Excel文件吗？这将覆盖当前所有数据。\nConfirm import? This will overwrite all data.')) {
-      return;
-    }
+  if (fileInputRef.current) {
+    fileInputRef.current.value = '';
+  }
 
-    const formData = new FormData();
-    formData.append('file', file);
+  if (!window.confirm('确认导入该Excel文件吗？这将覆盖当前所有数据。\nConfirm import? This will overwrite all data.')) {
+    return;
+  }
 
-    try {
-      const response = await fetch(`${API_URL}/import_excel`, {
-        method: 'POST',
-        body: formData,
-      });
+  const formData = new FormData();
+  formData.append('file', file);
 
-      if (response.ok) {
-        const result = await response.json();
-        alert(`导入成功！共 ${result.count} 条数据。\nImport successful!`);
-        fetchStudents();
-      } else {
-        const err = await response.json();
-        alert(`导入失败: ${err.detail}\nImport failed.`);
-      }
-    } catch (error) {
-      console.error(error);
-      alert('上传失败，请检查后端连接。\nUpload failed. Check backend connection.');
-    }
-  };
+  try {
+    const response = await fetch(`${API_URL}/import_excel`, {
+      method: 'POST',
+      body: formData,
+    });
 
-  // --- Logic ---
-
-  // Gacha algorithm
-  const handleDraw = () => {
-    if (isDrawing) return;
-    setIsDrawing(true);
-    setShowResult(false);
-    setShowLevelUp(false);
-    setDrawnStudent(null);
-    setStudentItems([]);
-    setIsInteractionComplete(false);
-
-    // 1. Priority Pool: Never picked students AND NOT IMMUNE
-    const neverPicked = students.filter(s => s.pickCount === 0 && (!s.immunity || s.immunity <= 0));
-
-    let targetId: number;
-
-    if (neverPicked.length > 0) {
-      // Pure random from unpicked
-      const randomIndex = Math.floor(Math.random() * neverPicked.length);
-      targetId = neverPicked[randomIndex].id;
+    if (response.ok) {
+      const result = await response.json();
+      alert(`导入成功！共 ${result.count} 条数据。\nImport successful!`);
+      fetchStudents();
     } else {
-      // 2. Weighted Pool: Lower stars = Higher weight, exclude immune
-      // Weight formula: 60 / (stars + 1)
-      let weightedPool: number[] = [];
-      students.filter(s => !s.immunity || s.immunity <= 0).forEach(student => {
-        const weight = Math.floor(60 / (student.stars + 1));
-        for (let i = 0; i < weight; i++) {
-          weightedPool.push(student.id);
-        }
-      });
-      const randomIndex = Math.floor(Math.random() * weightedPool.length);
-      targetId = weightedPool[randomIndex];
+      const err = await response.json();
+      alert(`导入失败: ${err.detail}\nImport failed.`);
     }
+  } catch (error) {
+    console.error(error);
+    alert('上传失败，请检查后端连接。\nUpload failed. Check backend connection.');
+  }
+};
 
-    const selected = students.find(s => s.id === targetId);
+// --- Logic ---
 
-    // Animation Sequence
-    setTimeout(() => {
-      if (selected) {
-        setDrawnStudent(selected);
-        fetchStudentItems(selected.id);
+// Gacha algorithm
+const handleDraw = () => {
+  if (isDrawing) return;
+  setIsDrawing(true);
+  setShowResult(false);
+  setShowLevelUp(false);
+  setDrawnStudent(null);
+  setStudentItems([]);
+  setIsInteractionComplete(false);
+
+  // 1. Priority Pool: Never picked students AND NOT IMMUNE
+  const neverPicked = students.filter(s => s.pickCount === 0 && (!s.immunity || s.immunity <= 0));
+
+  let targetId: number;
+
+  if (neverPicked.length > 0) {
+    // Pure random from unpicked
+    const randomIndex = Math.floor(Math.random() * neverPicked.length);
+    targetId = neverPicked[randomIndex].id;
+  } else {
+    // 2. Weighted Pool: Lower stars = Higher weight, exclude immune
+    // Weight formula: 60 / (stars + 1)
+    let weightedPool: number[] = [];
+    students.filter(s => !s.immunity || s.immunity <= 0).forEach(student => {
+      const weight = Math.floor(60 / (student.stars + 1));
+      for (let i = 0; i < weight; i++) {
+        weightedPool.push(student.id);
       }
-    }, 2000);
+    });
+    const randomIndex = Math.floor(Math.random() * weightedPool.length);
+    targetId = weightedPool[randomIndex];
+  }
 
-    setTimeout(() => {
-      setIsDrawing(false);
-      setShowResult(true);
-    }, 3500);
-  };
+  const selected = students.find(s => s.id === targetId);
 
-  // Reset to initial state
-  const handleReset = () => {
-    setDrawnStudent(null);
-    setShowResult(false);
-    setShowLevelUp(false);
-    setStudentItems([]);
-    setIsInteractionComplete(false);
-  };
+  // Animation Sequence
+  setTimeout(() => {
+    if (selected) {
+      setDrawnStudent(selected);
+      fetchStudentItems(selected.id);
+    }
+  }, 2000);
 
-  // Handle user response (Gacha flow)
-  const handleUpdateStats = (starChange: number) => {
-    if (!drawnStudent) return;
+  setTimeout(() => {
+    setIsDrawing(false);
+    setShowResult(true);
+  }, 3500);
+};
 
-    setStudents(prev => prev.map(s => {
-      if (s.id === drawnStudent.id) {
-        // Calculate new stars, clamped min 0, no max
-        const newStars = Math.max(0, s.stars + starChange);
+// Reset to initial state
+const handleReset = () => {
+  setDrawnStudent(null);
+  setShowResult(false);
+  setShowLevelUp(false);
+  setStudentItems([]);
+  setIsInteractionComplete(false);
+};
 
-        const updatedStudent = {
-          ...s,
-          pickCount: s.pickCount + 1,
-          stars: newStars
-        };
-        updateStudentOnBackend(updatedStudent); // Sync backend
-        return updatedStudent;
+// Handle user response (Gacha flow)
+const handleUpdateStats = (starChange: number) => {
+  if (!drawnStudent) return;
+
+  setStudents(prev => prev.map(s => {
+    if (s.id === drawnStudent.id) {
+      // Calculate new stars, clamped min 0, no max
+      const newStars = Math.max(0, s.stars + starChange);
+
+      const updatedStudent = {
+        ...s,
+        pickCount: s.pickCount + 1,
+        stars: newStars
+      };
+      updateStudentOnBackend(updatedStudent); // Sync backend
+      return updatedStudent;
+    }
+    return s;
+  }));
+
+  if (starChange > 0) {
+    // Trigger level up animation
+    setDrawnStudent(prev => prev ? ({ ...prev, stars: prev.stars + 1 }) : null);
+    setShowLevelUp(true);
+
+    // Draw Item Chance (Normal)
+    if (drawnStudent) {
+      setTimeout(() => {
+        drawItem(drawnStudent.id, 'normal');
+      }, 1000);
+    }
+    setIsInteractionComplete(true);
+  } else {
+    // Wrong Answer / Skip
+    // If Wrong (starChange < 0), draw NEGATIVE card
+    if (starChange < 0 && drawnStudent) {
+      setTimeout(() => {
+        drawItem(drawnStudent.id, 'negative');
+      }, 500);
+    }
+    setIsInteractionComplete(true);
+  }
+
+  // Advance Turn logic: Decrement immunity for everyone
+  // We do this after interaction is complete (user response recorded)
+  fetch(`${API_URL}/advance_turn`, { method: 'POST' })
+    .then(() => fetchStudents()) // Refresh to get updated immunities
+    .catch(err => console.error("Failed to advance turn", err));
+};
+
+const closeResult = () => {
+  setShowResult(false);
+  setDrawnStudent(null);
+  setShowLevelUp(false);
+  setStudentItems([]);
+};
+
+// Handle manual star adjustment (Sidebar flow)
+const handleManualStarChange = (studentId: number, change: number) => {
+  setStudents(prev => prev.map(s => {
+    if (s.id === studentId) {
+      const newStars = Math.max(0, s.stars + change);
+      const updatedStudent = { ...s, stars: newStars };
+
+      // Update the modal view as well
+      if (manualSelection && manualSelection.id === studentId) {
+        setManualSelection(updatedStudent);
       }
-      return s;
-    }));
-
-    if (starChange > 0) {
-      // Trigger level up animation
-      setDrawnStudent(prev => prev ? ({ ...prev, stars: prev.stars + 1 }) : null);
-      setShowLevelUp(true);
-
-      // Draw Item Chance (Normal)
-      if (drawnStudent) {
-        setTimeout(() => {
-          drawItem(drawnStudent.id, 'normal');
-        }, 1000);
+      if (drawnStudent && drawnStudent.id === studentId) {
+        setDrawnStudent(updatedStudent);
       }
-      setIsInteractionComplete(true);
+      updateStudentOnBackend(updatedStudent); // Sync backend
+      return updatedStudent;
+    }
+    return s;
+  }));
+};
+
+// Fetch items when manual selection opens
+useEffect(() => {
+  if (manualSelection) {
+    fetchStudentItems(manualSelection.id);
+  } else {
+    // Careful: if we clear items here, it might clear items for the drawn student if we are just closing the modal?
+    // But drawnStudent items are fetched in handleDraw.
+    // Let's safe-guard: Only clear if NO drawn student or if drawn student is not the one we just closed?
+    // Actually, simplest is to just clear. The user flow "Show Left Personal Pack" implies valid Drawn Student.
+    // If we are in "Manual Mode", we are likely not "Drawing" or we are inspecting.
+    if (!drawnStudent) {
+      setStudentItems([]);
     } else {
-      // Wrong Answer / Skip
-      // If Wrong (starChange < 0), draw NEGATIVE card
-      if (starChange < 0 && drawnStudent) {
-        setTimeout(() => {
-          drawItem(drawnStudent.id, 'negative');
-        }, 500);
-      }
-      setIsInteractionComplete(true);
+      // Restore drawn student items if we closed manual modal and there is an active drawn student
+      fetchStudentItems(drawnStudent.id);
     }
+  }
+}, [manualSelection]);
 
-    // Advance Turn logic: Decrement immunity for everyone
-    // We do this after interaction is complete (user response recorded)
-    fetch(`${API_URL}/advance_turn`, { method: 'POST' })
-      .then(() => fetchStudents()) // Refresh to get updated immunities
-      .catch(err => console.error("Failed to advance turn", err));
+// --- Stats ---
+const stats: Stats = useMemo(() => {
+  const total = students.length;
+  const picked = students.filter(s => s.pickCount > 0).length;
+  return {
+    progress: Math.round((picked / total) * 100),
+    unpickedCount: total - picked
   };
+}, [students]);
 
-  const closeResult = () => {
-    setShowResult(false);
-    setDrawnStudent(null);
-    setShowLevelUp(false);
-    setStudentItems([]);
-  };
+// Sorted Lists
+const sortedByCount = useMemo(() =>
+  [...students].sort((a, b) => b.pickCount - a.pickCount || b.stars - a.stars),
+  [students]);
 
-  // Handle manual star adjustment (Sidebar flow)
-  const handleManualStarChange = (studentId: number, change: number) => {
-    setStudents(prev => prev.map(s => {
-      if (s.id === studentId) {
-        const newStars = Math.max(0, s.stars + change);
-        const updatedStudent = { ...s, stars: newStars };
+const sortedByStars = useMemo(() =>
+  [...students].sort((a, b) => b.stars - a.stars || b.pickCount - a.pickCount),
+  [students]);
 
-        // Update the modal view as well
-        if (manualSelection && manualSelection.id === studentId) {
-          setManualSelection(updatedStudent);
-        }
-        if (drawnStudent && drawnStudent.id === studentId) {
-          setDrawnStudent(updatedStudent);
-        }
-        updateStudentOnBackend(updatedStudent); // Sync backend
-        return updatedStudent;
-      }
-      return s;
-    }));
-  };
-
-  // Fetch items when manual selection opens
-  useEffect(() => {
-    if (manualSelection) {
-      fetchStudentItems(manualSelection.id);
-    } else {
-      // Careful: if we clear items here, it might clear items for the drawn student if we are just closing the modal?
-      // But drawnStudent items are fetched in handleDraw.
-      // Let's safe-guard: Only clear if NO drawn student or if drawn student is not the one we just closed?
-      // Actually, simplest is to just clear. The user flow "Show Left Personal Pack" implies valid Drawn Student.
-      // If we are in "Manual Mode", we are likely not "Drawing" or we are inspecting.
-      if (!drawnStudent) {
-        setStudentItems([]);
-      } else {
-        // Restore drawn student items if we closed manual modal and there is an active drawn student
-        fetchStudentItems(drawnStudent.id);
-      }
-    }
-  }, [manualSelection]);
-
-  // --- Stats ---
-  const stats: Stats = useMemo(() => {
-    const total = students.length;
-    const picked = students.filter(s => s.pickCount > 0).length;
-    return {
-      progress: Math.round((picked / total) * 100),
-      unpickedCount: total - picked
-    };
-  }, [students]);
-
-  // Sorted Lists
-  const sortedByCount = useMemo(() =>
-    [...students].sort((a, b) => b.pickCount - a.pickCount || b.stars - a.stars),
-    [students]);
-
-  const sortedByStars = useMemo(() =>
-    [...students].sort((a, b) => b.stars - a.stars || b.pickCount - a.pickCount),
-    [students]);
-
-  // CSS injection for keyframes
-  const animationStyles = `
+// CSS injection for keyframes
+const animationStyles = `
     @keyframes shimmer {
       0% { transform: translateX(-100%); }
       100% { transform: translateX(50%); }
@@ -652,441 +668,450 @@ export default function App() {
     }
   `;
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-white font-sans selection:bg-indigo-500 overflow-hidden flex flex-col md:flex-row">
-      <style>{animationStyles}</style>
+return (
+  <div className="min-h-screen bg-slate-900 text-white font-sans selection:bg-indigo-500 overflow-hidden flex flex-col md:flex-row">
+    <style>{animationStyles}</style>
 
-      {/* --- Main Area (Left/Center) --- */}
-      <div className="flex-1 flex flex-col items-center justify-center relative p-4 h-screen md:h-auto">
+    {/* --- Main Area (Left/Center) --- */}
+    <div className="flex-1 flex flex-col items-center justify-center relative p-4 h-screen md:h-auto">
 
-        {/* Background Decorative Elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600 rounded-full blur-[128px] opacity-20"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-600 rounded-full blur-[128px] opacity-20"></div>
-        </div>
+      {/* Background Decorative Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600 rounded-full blur-[128px] opacity-20"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-600 rounded-full blur-[128px] opacity-20"></div>
+      </div>
 
-        {/* Header */}
-        <div className="z-10 absolute top-6 left-6">
-          <h1 className="text-3xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center gap-2">
-            <Sparkles className="text-yellow-400" />
-            知识召唤阵
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">Classroom Gacha System</p>
-        </div>
+      {/* Header */}
+      <div className="z-10 absolute top-6 left-6">
+        <h1 className="text-3xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center gap-2">
+          <Sparkles className="text-yellow-400" />
+          知识召唤阵
+        </h1>
+        <p className="text-slate-400 text-sm mt-1">Classroom Gacha System</p>
+      </div>
 
-        {/* Stats Summary (Mobile Top Right / Desktop Top Left below Header) */}
-        <div className="z-10 absolute top-6 right-6 md:right-auto md:left-6 md:top-28 flex flex-col gap-2">
-          <div className="bg-slate-800/50 backdrop-blur border border-slate-700 p-3 rounded-lg text-xs">
-            <div className="flex justify-between mb-1">
-              <span className="text-slate-400">覆盖率</span>
-              <span className="font-bold text-green-400">{stats.progress}%</span>
-            </div>
-            <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
-              <div className="h-full bg-green-500 transition-all duration-500" style={{ width: `${stats.progress}%` }}></div>
-            </div>
-            <div className="mt-2 text-slate-400">
-              剩余未点名: <span className="text-white font-bold">{stats.unpickedCount}</span> 人
-            </div>
+      {/* Stats Summary (Mobile Top Right / Desktop Top Left below Header) */}
+      <div className="z-10 absolute top-6 right-6 md:right-auto md:left-6 md:top-28 flex flex-col gap-2">
+        <div className="bg-slate-800/50 backdrop-blur border border-slate-700 p-3 rounded-lg text-xs">
+          <div className="flex justify-between mb-1">
+            <span className="text-slate-400">覆盖率</span>
+            <span className="font-bold text-green-400">{stats.progress}%</span>
+          </div>
+          <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 transition-all duration-500" style={{ width: `${stats.progress}%` }}></div>
+          </div>
+          <div className="mt-2 text-slate-400">
+            剩余未点名: <span className="text-white font-bold">{stats.unpickedCount}</span> 人
           </div>
         </div>
+      </div>
 
-        {/* Left Side Inventory */}
-        <div className="z-10 absolute left-6 bottom-6 md:top-48 md:bottom-auto flex flex-col gap-4 w-64">
-          {studentItems.length > 0 && !isDrawing && (
-            <div className="animate-in slide-in-from-left duration-500">
-              <div className="bg-slate-800/80 backdrop-blur border border-slate-600/50 p-4 rounded-xl shadow-xl">
-                <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Award size={14} /> 个人道具包
-                </h3>
-                <div className="flex flex-col gap-2 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
-                  {studentItems.map(si => (
-                    <div key={si.id} onClick={() => setPreviewItem(si)} className="cursor-pointer hover:scale-105 transition-transform">
-                      <ItemCard
-                        item={si.item_card}
-                        size="small"
-                        showDetails={true}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Side Ranks (Floating in Main Area) */}
-        {!isDrawing && (
-          <div className="z-10 absolute right-6 top-6 w-64 flex flex-col gap-4 animate-in slide-in-from-right duration-700">
-            {/* Hard Work Rank (Pick Count) */}
-            <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 p-4 rounded-xl shadow-2xl">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <RefreshCw size={12} />
-                勤奋榜 (被点名次数)
+      {/* Left Side Inventory */}
+      <div className="z-10 absolute left-6 bottom-6 md:top-48 md:bottom-auto flex flex-col gap-4 w-64">
+        {studentItems.length > 0 && !isDrawing && (
+          <div className="animate-in slide-in-from-left duration-500">
+            <div className="bg-slate-800/80 backdrop-blur border border-slate-600/50 p-4 rounded-xl shadow-xl">
+              <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Award size={14} /> 个人道具包
               </h3>
-              <div className="space-y-2">
-                {sortedByCount.slice(0, 5).map((student, i) => (
-                  <div key={student.id} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700/30">
-                    <div className={`w-6 h-6 flex items-center justify-center rounded font-bold text-xs ${i === 0 ? 'bg-yellow-500 text-yellow-900' : 'bg-slate-700 text-slate-400'}`}>
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 text-sm font-medium text-slate-300">{student.name}</div>
-                    <div className="text-xs font-mono text-slate-500">{student.pickCount}次</div>
+              <div className="flex flex-col gap-2 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
+                {studentItems.map(si => (
+                  <div key={si.id} onClick={() => setPreviewItem(si)} className="cursor-pointer hover:scale-105 transition-transform">
+                    <ItemCard
+                      item={si.item_card}
+                      size="small"
+                      showDetails={true}
+                    />
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Lucky Rank (Stars) */}
-            <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 p-4 rounded-xl shadow-2xl">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Trophy size={12} />
-                欧皇榜 (星级排行)
-              </h3>
-              <div className="space-y-2">
-                {sortedByStars.filter(s => s.stars > 0).slice(0, 5).map((student, i) => {
-                  const rKey = (student.stars >= 0 && student.stars <= 5 ? student.stars : 0) as RarityLevel;
-                  return (
-                    <div key={student.id} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700/30">
-                      <div className="font-bold text-sm text-slate-500 w-4">{i + 1}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-slate-200">{student.name}</span>
-                          <span className={`text-[10px] px-1 rounded border ${RARITY_CONFIG[rKey].color} ${RARITY_CONFIG[rKey].border} bg-opacity-20`}>
-                            {RARITY_CONFIG[rKey].label}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="font-bold text-yellow-500 font-mono text-xs">
-                        {student.stars} ★
-                      </div>
-                    </div>
-                  );
-                })}
-                {sortedByStars.filter(s => s.stars > 0).length === 0 && (
-                  <div className="text-center text-slate-600 text-xs py-2 italic opacity-50">
-                    暂无数据
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
-
-        {/* Summoning Area */}
-        <div className="z-20 flex flex-col items-center gap-8">
-
-          {/* Card Slot */}
-          <div
-            className={`
-              transition-all duration-700 transform perspective-[1000px]
-              ${isDrawing ? 'animate-summon-spin' : 'animate-float'}
-            `}
-          >
-            <Card
-              student={drawnStudent || { id: -1, stars: 0, name: '???', pickCount: 0, immunity: 0 }}
-              isRevealed={showResult}
-              size="large"
-            />
-
-
-          </div>
-
-          {/* Action Buttons */}
-          {!showResult && (
-            <button
-              onClick={handleDraw}
-              disabled={isDrawing}
-              className={`
-                group relative px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full 
-                font-black text-xl tracking-widest shadow-lg shadow-indigo-500/30 
-                transition-all duration-200 
-                ${isDrawing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 hover:shadow-indigo-500/50 active:scale-95'}
-              `}
-            >
-              {isDrawing ? '召唤中...' : '开始抽卡'}
-              <div className="absolute inset-0 rounded-full border border-white/20 group-hover:scale-105 transition-transform"></div>
-            </button>
-          )}
-
-          {/* Result Interactions */}
-          {showResult && !isInteractionComplete && (
-            <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full max-w-2xl">
-
-              {showLevelUp && (
-                <div className="absolute -top-20 left-1/2 -translate-x-1/2 whitespace-nowrap z-50">
-                  <span className="text-4xl font-black text-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] animate-bounce">
-                    LEVEL UP! 🌟
-                  </span>
-                </div>
-              )}
-
-              <div className="flex flex-wrap justify-center gap-4">
-                <button
-                  onClick={() => handleUpdateStats(-1)}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 text-white font-bold shadow-lg shadow-red-900/20 transition-all flex items-center gap-2 transform hover:-translate-y-1"
-                >
-                  <ThumbsDown size={20} />
-                  回答错误 (降星)
-                </button>
-
-                <button
-                  onClick={() => handleUpdateStats(0)}
-                  className="px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold transition-colors flex items-center gap-2"
-                >
-                  跳过 / 平局
-                </button>
-
-                <button
-                  onClick={() => handleUpdateStats(1)}
-                  disabled={showLevelUp}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold shadow-lg shadow-green-900/20 transition-all flex items-center gap-2 transform hover:-translate-y-1"
-                >
-                  <Award size={20} />
-                  回答正确 (升星)
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Next Student Button -> Reset Button */}
-          {showResult && isInteractionComplete && (
-            <button
-              onClick={handleReset}
-              className="px-10 py-4 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-full font-bold text-xl shadow-lg border-2 border-slate-500 animate-in zoom-in-50 duration-300 hover:scale-105 active:scale-95 transition-transform"
-            >
-              重置 (Reset)
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* --- Sidebar (Right) --- */}
-      <div className="w-full md:w-80 bg-slate-800/50 border-l border-slate-700/50 backdrop-blur-xl flex flex-col h-[40vh] md:h-screen z-30">
-        <div className="p-4 border-b border-slate-700/50 bg-slate-800/80 sticky top-0 z-20 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-lg flex items-center gap-2 text-slate-200">
-              <BarChart3 className="text-indigo-400" size={20} />
-              班级风云榜
-            </h2>
-          </div>
-
-          {/* Data Controls */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleExport}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded transition-colors text-slate-300"
-              title="导出当前数据"
-            >
-              <Download size={14} /> 导出
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded transition-colors text-slate-300"
-              title="导入数据文件"
-            >
-              <Upload size={14} /> 导入
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImport}
-              className="hidden"
-              accept=".xlsx, .xls"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
-
-
-
-          {/* Full List */}
-          <div className="pt-4 border-t border-slate-700/50">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Users size={12} />
-              全班卡池状态 (点击可调整)
+      {/* Right Side Ranks (Floating in Main Area) */}
+      {!isDrawing && (
+        <div className="z-10 absolute right-6 top-6 w-64 flex flex-col gap-4 animate-in slide-in-from-right duration-700">
+          {/* Hard Work Rank (Pick Count) */}
+          <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 p-4 rounded-xl shadow-2xl">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <RefreshCw size={12} />
+              勤奋榜 (被点名次数)
             </h3>
-            <div className="grid grid-cols-1 gap-2">
-              {students.map(student => (
-                <div
-                  key={student.id}
-                  onClick={() => setManualSelection(student)}
-                  className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-95"
-                >
-                  <Card student={student} isRevealed={true} size="small" />
+            <div className="space-y-2">
+              {sortedByCount.slice(0, 5).map((student, i) => (
+                <div key={student.id} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700/30">
+                  <div className={`w-6 h-6 flex items-center justify-center rounded font-bold text-xs ${i === 0 ? 'bg-yellow-500 text-yellow-900' : 'bg-slate-700 text-slate-400'}`}>
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 text-sm font-medium text-slate-300">{student.name}</div>
+                  <div className="text-xs font-mono text-slate-500">{student.pickCount}次</div>
                 </div>
               ))}
             </div>
           </div>
 
-        </div>
-      </div>
-
-      {/* --- Manual Adjustment Modal --- */}
-      {manualSelection && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-          onClick={() => setManualSelection(null)}
-        >
-          <div
-            className="bg-slate-800 rounded-2xl border border-slate-600 p-6 max-w-sm w-full shadow-2xl relative flex flex-col items-center gap-6"
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-              onClick={() => setManualSelection(null)}
-            >
-              <X size={24} />
-            </button>
-
-            <h3 className="text-xl font-bold text-slate-200">手动调整</h3>
-
-            <Card student={manualSelection} isRevealed={true} size="large" />
-
-            {/* Inventory in Modal */}
-            {studentItems.length > 0 && (
-              <div className="w-full">
-                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">我的卡包</h4>
-                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                  {studentItems.map(si => (
-                    <div key={si.id} onClick={() => setPreviewItem(si)} className="cursor-pointer flex-shrink-0 transition-transform duration-300 hover:scale-105 active:scale-95">
-                      <ItemCard item={si.item_card} size="small" showDetails={false} className="w-24 h-32" />
+          {/* Lucky Rank (Stars) */}
+          <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 p-4 rounded-xl shadow-2xl">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Trophy size={12} />
+              欧皇榜 (星级排行)
+            </h3>
+            <div className="space-y-2">
+              {sortedByStars.filter(s => s.stars > 0).slice(0, 5).map((student, i) => {
+                const rKey = (student.stars >= 0 && student.stars <= 5 ? student.stars : 0) as RarityLevel;
+                return (
+                  <div key={student.id} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700/30">
+                    <div className="font-bold text-sm text-slate-500 w-4">{i + 1}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-200">{student.name}</span>
+                        <span className={`text-[10px] px-1 rounded border ${RARITY_CONFIG[rKey].color} ${RARITY_CONFIG[rKey].border} bg-opacity-20`}>
+                          {RARITY_CONFIG[rKey].label}
+                        </span>
+                      </div>
                     </div>
-                  ))}
+                    <div className="font-bold text-yellow-500 font-mono text-xs">
+                      {student.stars} ★
+                    </div>
+                  </div>
+                );
+              })}
+              {sortedByStars.filter(s => s.stars > 0).length === 0 && (
+                <div className="text-center text-slate-600 text-xs py-2 italic opacity-50">
+                  暂无数据
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summoning Area */}
+      <div className="z-20 flex flex-col items-center gap-8">
+
+        {/* Card Slot */}
+        <div
+          className={`
+              transition-all duration-700 transform perspective-[1000px]
+              ${isDrawing ? 'animate-summon-spin' : 'animate-float'}
+            `}
+        >
+          <Card
+            student={drawnStudent || { id: -1, stars: 0, name: '???', pickCount: 0, immunity: 0 }}
+            isRevealed={showResult}
+            size="large"
+          />
+
+
+        </div>
+
+        {/* Action Buttons */}
+        {!showResult && (
+          <button
+            onClick={handleDraw}
+            disabled={isDrawing}
+            className={`
+                group relative px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full 
+                font-black text-xl tracking-widest shadow-lg shadow-indigo-500/30 
+                transition-all duration-200 
+                ${isDrawing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 hover:shadow-indigo-500/50 active:scale-95'}
+              `}
+          >
+            {isDrawing ? '召唤中...' : '开始抽卡'}
+            <div className="absolute inset-0 rounded-full border border-white/20 group-hover:scale-105 transition-transform"></div>
+          </button>
+        )}
+
+        {/* Result Interactions */}
+        {showResult && !isInteractionComplete && (
+          <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full max-w-2xl">
+
+            {showLevelUp && (
+              <div className="absolute -top-20 left-1/2 -translate-x-1/2 whitespace-nowrap z-50">
+                <span className="text-4xl font-black text-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] animate-bounce">
+                  LEVEL UP! 🌟
+                </span>
               </div>
             )}
 
-            <div className="flex gap-4 w-full justify-center">
+            <div className="flex flex-wrap justify-center gap-4">
               <button
-                onClick={() => handleManualStarChange(manualSelection.id, -1)}
-                className="flex-1 py-3 bg-red-500/20 border border-red-500/50 hover:bg-red-500/30 text-red-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+                onClick={() => handleUpdateStats(-1)}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 text-white font-bold shadow-lg shadow-red-900/20 transition-all flex items-center gap-2 transform hover:-translate-y-1"
               >
-                <ThumbsDown size={18} /> 降星
+                <ThumbsDown size={20} />
+                回答错误 (降星)
               </button>
+
               <button
-                onClick={() => handleManualStarChange(manualSelection.id, 1)}
-                className="flex-1 py-3 bg-green-500/20 border border-green-500/50 hover:bg-green-500/30 text-green-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+                onClick={() => handleUpdateStats(0)}
+                className="px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold transition-colors flex items-center gap-2"
               >
-                <Award size={18} /> 升星
+                跳过 / 平局
+              </button>
+
+              <button
+                onClick={() => handleUpdateStats(1)}
+                disabled={showLevelUp}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold shadow-lg shadow-green-900/20 transition-all flex items-center gap-2 transform hover:-translate-y-1"
+              >
+                <Award size={20} />
+                回答正确 (升星)
               </button>
             </div>
-
-            <button
-              onClick={() => {
-                if (window.confirm(`确定要删除学生 ${manualSelection.name} 吗？此操作不可恢复。`)) {
-                  deleteStudentOnBackend(manualSelection.id);
-                }
-              }}
-              className="w-full py-2 bg-slate-700/50 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-lg text-sm transition-colors border border-transparent hover:border-red-900"
-            >
-              删除该学生
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* --- Item Draw Modal --- */}
-      {showItemModal && drawnItem && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
-          onClick={() => setShowItemModal(false)}
-        >
-          <div
-            className="flex flex-col items-center gap-6 animate-in zoom-in-50 duration-500"
-            onClick={e => e.stopPropagation()}
+        {/* Next Student Button -> Reset Button */}
+        {showResult && isInteractionComplete && (
+          <button
+            onClick={handleReset}
+            className="px-10 py-4 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-full font-bold text-xl shadow-lg border-2 border-slate-500 animate-in zoom-in-50 duration-300 hover:scale-105 active:scale-95 transition-transform"
           >
-            <div className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
-              获得卡牌！
-            </div>
+            重置 (Reset)
+          </button>
+        )}
+      </div>
+    </div>
 
-            <ItemCard item={drawnItem} size="large" showDetails={true} />
+    {/* --- Sidebar (Right) --- */}
+    <div className="w-full md:w-80 bg-slate-800/50 border-l border-slate-700/50 backdrop-blur-xl flex flex-col h-[40vh] md:h-screen z-30">
+      <div className="p-4 border-b border-slate-700/50 bg-slate-800/80 sticky top-0 z-20 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-lg flex items-center gap-2 text-slate-200">
+            <BarChart3 className="text-indigo-400" size={20} />
+            班级风云榜
+          </h2>
+        </div>
 
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold text-white">{drawnItem.name}</h2>
-              <p className="text-indigo-200 tex-sm max-w-sm">{drawnItem.description}</p>
-            </div>
+        {/* Data Controls */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded transition-colors text-slate-300"
+            title="导出当前数据"
+          >
+            <Download size={14} /> 导出
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded transition-colors text-slate-300"
+            title="导入数据文件"
+          >
+            <Upload size={14} /> 导入
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImport}
+            className="hidden"
+            accept=".xlsx, .xls"
+          />
+        </div>
+      </div>
 
-            <button
-              onClick={() => setShowItemModal(false)}
-              className="mt-4 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-amber-950 font-black rounded-full shadow-lg shadow-amber-500/20 transition-all hover:scale-105"
-            >
-              收下 (Keep)
-            </button>
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+
+
+
+        {/* Full List */}
+        <div className="pt-4 border-t border-slate-700/50">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Users size={12} />
+            全班卡池状态 (点击可调整)
+          </h3>
+          <div className="grid grid-cols-1 gap-2">
+            {students.map(student => (
+              <div
+                key={student.id}
+                onClick={() => setManualSelection(student)}
+                className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-95"
+              >
+                <Card student={student} isRevealed={true} size="small" />
+              </div>
+            ))}
           </div>
         </div>
-      )}
 
-      {/* --- Item Preview Modal --- */}
-      {previewItem && (
+      </div>
+    </div>
+
+    {/* --- Manual Adjustment Modal --- */}
+    {manualSelection && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        onClick={() => setManualSelection(null)}
+      >
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
-          onClick={() => setPreviewItem(null)}
+          className="bg-slate-800 rounded-2xl border border-slate-600 p-6 max-w-sm w-full shadow-2xl relative flex flex-col items-center gap-6"
+          onClick={e => e.stopPropagation()}
         >
-          <div className="relative animate-in zoom-in-75 duration-300" onClick={e => e.stopPropagation()}>
-            <div className="flex flex-col items-center gap-6">
-              <ItemCard item={previewItem.item_card} size="large" showDetails={true} className="shadow-2xl shadow-amber-500/20 scale-125" />
+          <button
+            className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+            onClick={() => setManualSelection(null)}
+          >
+            <X size={24} />
+          </button>
 
-              <div className="flex gap-4 mt-8">
-                <button
-                  onClick={() => setPreviewItem(null)}
-                  className="px-6 py-2 rounded-full border border-slate-500 text-slate-300 hover:bg-slate-800 transition-colors"
-                >
-                  返回 (Return)
-                </button>
-                <button
-                  onClick={() => {
-                    useItem(previewItem);
-                  }}
-                  className="px-8 py-2 rounded-full bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 transition-transform hover:scale-105"
-                >
-                  使用 (Use)
-                </button>
+          <h3 className="text-xl font-bold text-slate-200">手动调整</h3>
+
+          <Card student={manualSelection} isRevealed={true} size="large" />
+
+          {/* Inventory in Modal */}
+          {studentItems.length > 0 && (
+            <div className="w-full">
+              <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">我的卡包</h4>
+              <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                {studentItems.map(si => (
+                  <div key={si.id} onClick={() => setPreviewItem(si)} className="cursor-pointer flex-shrink-0 transition-transform duration-300 hover:scale-105 active:scale-95">
+                    <ItemCard item={si.item_card} size="small" showDetails={false} className="w-24 h-32" />
+                  </div>
+                ))}
               </div>
             </div>
+          )}
+
+          <div className="flex gap-4 w-full justify-center">
+            <button
+              onClick={() => handleManualStarChange(manualSelection.id, -1)}
+              className="flex-1 py-3 bg-red-500/20 border border-red-500/50 hover:bg-red-500/30 text-red-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+            >
+              <ThumbsDown size={18} /> 降星
+            </button>
+            <button
+              onClick={() => handleManualStarChange(manualSelection.id, 1)}
+              className="flex-1 py-3 bg-green-500/20 border border-green-500/50 hover:bg-green-500/30 text-green-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+            >
+              <Award size={18} /> 升星
+            </button>
+          </div>
+
+          <button
+            onClick={() => {
+              if (window.confirm(`确定要删除学生 ${manualSelection.name} 吗？此操作不可恢复。`)) {
+                deleteStudentOnBackend(manualSelection.id);
+              }
+            }}
+            className="w-full py-2 bg-slate-700/50 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-lg text-sm transition-colors border border-transparent hover:border-red-900"
+          >
+            删除该学生
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* --- Item Draw Modal --- */}
+    {showItemModal && drawnItem && (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
+        onClick={() => setShowItemModal(false)}
+      >
+        <div
+          className="flex flex-col items-center gap-6 animate-in zoom-in-50 duration-500"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
+            获得卡牌！
+          </div>
+
+          <ItemCard item={drawnItem} size="large" showDetails={true} />
+
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-bold text-white">{drawnItem.name}</h2>
+            <p className="text-indigo-200 tex-sm max-w-sm">{drawnItem.description}</p>
+          </div>
+
+          <button
+            onClick={() => setShowItemModal(false)}
+            className="mt-4 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-amber-950 font-black rounded-full shadow-lg shadow-amber-500/20 transition-all hover:scale-105"
+          >
+            收下 (Keep)
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* --- Item Preview Modal --- */}
+    {previewItem && (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
+        onClick={() => setPreviewItem(null)}
+      >
+        <div className="relative animate-in zoom-in-75 duration-300" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-col items-center gap-6">
+            <ItemCard item={previewItem.item_card} size="large" showDetails={true} className="shadow-2xl shadow-amber-500/20 scale-125" />
+
+            <div className="flex gap-4 mt-8">
+              <button
+                onClick={() => setPreviewItem(null)}
+                className="px-6 py-2 rounded-full border border-slate-500 text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                返回 (Return)
+              </button>
+              <button
+                onClick={() => {
+                  useItem(previewItem);
+                }}
+                className="px-8 py-2 rounded-full bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 transition-transform hover:scale-105"
+              >
+                使用 (Use)
+              </button>
+            </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      {showRoulette && pendingDrawnItem && (
-        <RouletteEffect
-          items={rouletteItems}
-          finalItem={pendingDrawnItem}
-          onComplete={handleRouletteComplete}
-        />
-      )}
-      {activeEffect === 'shield' && <ShieldEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'mark_target' && (
-        <MarkTargetEffect
-          students={students.filter(s => s.id !== drawnStudent?.id)} // Exclude current student? Or include? Usually replace means someone else.
-          onComplete={(victim) => handleEffectComplete(victim)}
-        />
-      )}
-      {activeEffect === 'exp_potion' && <ExpPotionEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'mass_silence' && <MassSilenceEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'doomsday' && <DoomsdayEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'legion_glory' && <LegionGloryEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'shadow_raid' && (
-        <ShadowRaidEffect
-          students={students}
-          onComplete={(victim) => handleEffectComplete(victim)}
-        />
-      )}
-      {activeEffect === 'berserker_trial' && (
-        <BerserkerTrialEffect
-          students={students}
-          onComplete={(winner) => handleEffectComplete(winner)}
-        />
-      )}
-      {activeEffect === 'mana_drain' && (
-        <ManaDrainEffect
-          user={drawnStudent || manualSelection!}
-          students={students}
-          onComplete={(result) => handleEffectComplete(result)}
-        />
-      )}
-      {activeEffect === 'stealth_cloak' && <StealthCloakEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'sanctuary' && <SanctuaryEffect onComplete={() => handleEffectComplete()} />}
-    </div>
-  );
+    {showRoulette && pendingDrawnItem && (
+      <RouletteEffect
+        items={rouletteItems}
+        finalItem={pendingDrawnItem}
+        onComplete={handleRouletteComplete}
+      />
+    )}
+    {activeEffect === 'shield' && <ShieldEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'mark_target' && (
+      <MarkTargetEffect
+        students={students.filter(s => s.id !== drawnStudent?.id)} // Exclude current student? Or include? Usually replace means someone else.
+        onComplete={(victim) => handleEffectComplete(victim)}
+      />
+    )}
+    {activeEffect === 'exp_potion' && <ExpPotionEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'mass_silence' && <MassSilenceEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'doomsday' && <DoomsdayEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'legion_glory' && <LegionGloryEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'shadow_raid' && (
+      <ShadowRaidEffect
+        students={students}
+        onComplete={(victim) => handleEffectComplete(victim)}
+      />
+    )}
+    {activeEffect === 'berserker_trial' && (
+      <BerserkerTrialEffect
+        students={students}
+        onComplete={(winner) => handleEffectComplete(winner)}
+      />
+    )}
+    {activeEffect === 'mana_drain' && (
+      <ManaDrainEffect
+        user={drawnStudent || manualSelection!}
+        students={students}
+        onComplete={(result) => {
+          // Placeholder for handleEffectComplete logic
+          // In a real scenario, this would be part of the handleEffectComplete function
+          if (activeEffect === 'universal_salvation') {
+            students.forEach(s => handleManualStarChange(s.id, 1));
+          }
+          // Original logic for mana_drain
+          handleEffectComplete(result);
+        }}
+      />
+    )}
+    {activeEffect === 'stealth_cloak' && <StealthCloakEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'sanctuary' && <SanctuaryEffect onComplete={() => handleEffectComplete()} />}
+    {activeEffect === 'universal_salvation' && <UniversalSalvationEffect onComplete={() => handleEffectComplete()} />}
+  </div>
+);
 }

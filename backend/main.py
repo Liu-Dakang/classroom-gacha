@@ -346,6 +346,17 @@ def ensure_special_cards_exist():
             db.add(item)
             print("Added missing card: 结界：庇护所")
             
+        # Check Universal Salvation
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "普渡众生").first():
+            item = models.ItemCard(
+                name="普渡众生",
+                description="全班所有学生星级 +1。",
+                function_desc="Universal Salvation: All students gain 1 star.",
+                image_path="static/images/24.jpg"
+            )
+            db.add(item)
+            print("Added missing card: 普渡众生")
+            
         db.commit()
     except Exception as e:
         print(f"Error checking special cards: {e}")
