@@ -26,11 +26,17 @@ const ItemCard: React.FC<Props> = ({ item, onClick, size = 'small', showDetails 
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <img
-                src={`${API_URL}/static/images/${item.image_path}`}
-                alt={item.name}
-                className="w-full h-full object-cover"
-            />
+            {item.image_path ? (
+                <img
+                    src={`${API_URL}/static/images/${item.image_path}`}
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                />
+            ) : (
+                <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+                    <span className="text-4xl">🎴</span>
+                </div>
+            )}
 
             {/* Overlay Title */}
             <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent p-2">

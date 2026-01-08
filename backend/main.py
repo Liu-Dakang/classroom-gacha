@@ -26,6 +26,24 @@ def check_db_schema():
             print("adding immunity column...")
             db.execute(text("ALTER TABLE students ADD COLUMN immunity INTEGER DEFAULT 0"))
             db.commit()
+
+        # Check is_cursed column
+        try:
+            db.execute(text("SELECT is_cursed FROM students LIMIT 1"))
+        except Exception:
+            print("adding is_cursed column...")
+            db.execute(text("ALTER TABLE students ADD COLUMN is_cursed BOOLEAN DEFAULT 0"))
+            db.execute(text("ALTER TABLE students ADD COLUMN is_cursed BOOLEAN DEFAULT 0"))
+            db.commit()
+
+        # Check item_cards columns
+        try:
+            db.execute(text("SELECT do_type FROM item_cards LIMIT 1"))
+        except Exception:
+            print("adding do_type and probability columns...")
+            db.execute(text("ALTER TABLE item_cards ADD COLUMN do_type INTEGER DEFAULT 1"))
+            db.execute(text("ALTER TABLE item_cards ADD COLUMN probability FLOAT DEFAULT 1.0"))
+            db.commit()
     except Exception as e:
         print(f"Schema check error: {e}")
     finally:
@@ -93,6 +111,8 @@ def update_student(student_id: int, student: schemas.StudentCreate, db: Session 
     db_student.pick_count = student.pick_count
     db_student.name = student.name
     db_student.dorm_number = student.dorm_number
+    db_student.immunity = student.immunity
+    db_student.is_cursed = student.is_cursed
     
     db.commit()
     db.refresh(db_student)
@@ -169,22 +189,36 @@ def draw_item_for_student(student_id: int, pool_type: str = "normal", db: Sessio
         raise HTTPException(status_code=404, detail="No items available in card pool")
 
     # Filter by pool type
+    # Filter by pool type and do_type
+    filtered_items = []
     if pool_type == "negative":
-        # Negative cards: "群体沉默", "末日审判"
-        neg_names = ["群体沉默", "末日审判"]
-        candidate_items = [i for i in items if i.name in neg_names]
-        
-        # Fallback: if no negative cards found, use all items (or handle error)
-        if not candidate_items:
-             candidate_items = items 
+        # Negative cards (do_type = 0)
+        filtered_items = [i for i in items if i.do_type == 0]
+        # Fallback to name-based if do_type not set or empty (migration safety)
+        if not filtered_items:
+             neg_names = ["群体沉默", "末日审判", "黑暗诅咒", "一夫当关"]
+             filtered_items = [i for i in items if i.name in neg_names]
     else:
-        # Normal pool: Exclude negative cards
-        neg_names = ["群体沉默", "末日审判"]
-        candidate_items = [i for i in items if i.name not in neg_names]
-        if not candidate_items:
-             candidate_items = items
+        # Normal pool (do_type = 1)
+        filtered_items = [i for i in items if i.do_type == 1]
+        # Fallback
+        if not filtered_items:
+             neg_names = ["群体沉默", "末日审判", "黑暗诅咒", "一夫当关"]
+             filtered_items = [i for i in items if i.name not in neg_names]
 
-    drawn_item = random.choice(candidate_items)
+    if not filtered_items:
+         # Ultimate fallback
+         filtered_items = items
+
+    # Weighted Draw
+    # Extract weights. Default to 1.0 if None
+    weights = [getattr(i, 'probability', 1.0) or 1.0 for i in filtered_items]
+    
+    # Check if all weights are zero/valid? 
+    if sum(weights) <= 0:
+        weights = [1.0] * len(filtered_items)
+
+    drawn_item = random.choices(filtered_items, weights=weights, k=1)[0]
 
     # Add to student inventory
     student_item = models.StudentItem(student_id=student_id, item_card_id=drawn_item.id)
@@ -352,11 +386,116 @@ def ensure_special_cards_exist():
                 name="普渡众生",
                 description="全班所有学生星级 +1。",
                 function_desc="Universal Salvation: All students gain 1 star.",
-                image_path="static/images/24.jpg"
+                image_path="24.jpg"
             )
             db.add(item)
             print("Added missing card: 普渡众生")
-            
+        else:
+            # Fix existing path if incorrect (migration fix)
+            card = db.query(models.ItemCard).filter(models.ItemCard.name == "普渡众生").first()
+            if card.image_path == "static/images/24.jpg":
+                card.image_path = "24.jpg"
+                db.add(card)
+                print("Fixed image path for: 普渡众生")
+        
+        # Check Dark Curse
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "黑暗诅咒").first():
+            item = models.ItemCard(
+                name="黑暗诅咒",
+                description="自身陷入可以负分状态，突破下限。",
+                function_desc="Dark Curse: Allows negative stars.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 黑暗诅咒")
+
+        # Check Purification
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "净化术").first():
+            item = models.ItemCard(
+                name="净化术",
+                description="解除负分状态，分数重置为0分。",
+                function_desc="Purification: Clears curse and resets negative stars to 0.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 净化术")
+
+        # Check Abyssal Gaze
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "深渊凝视").first():
+            item = models.ItemCard(
+                name="深渊凝视",
+                description="进行判定，具有30%概率加3星，70%概率清零。",
+                function_desc="Abyssal Gaze: 30% chance +3 stars, 70% reset to 0.",
+                image_path=""
+            )
+            db.add(item)
+            print("Added missing card: 深渊凝视")
+
+        # Check Royal PK
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "皇城PK").first():
+            item = models.ItemCard(
+                name="皇城PK",
+                description="随机抽取一个人进行星星数量的比较，如果比对方多，则多增加一星",
+                function_desc="Royal PK: Compare stars with random student. If higher, gain +1 star.",
+                image_path="",
+                do_type=1,
+                probability=1.0
+            )
+            db.add(item)
+            print("Added missing card: 皇城PK")
+
+        # Check Chain Lightning
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "连锁闪电").first():
+            item = models.ItemCard(
+                name="连锁闪电",
+                description="概率性扣自己2个星，如果没中，继承到下一个人，最多继承3次",
+                function_desc="Chain Lightning: 50% chance -2 stars. On miss, jumps to next student (max 3 jumps).",
+                image_path="12.jpg",
+                do_type=0,
+                probability=1.0
+            )
+            db.add(item)
+            print("Added missing card: 连锁闪电")
+
+        # Check One Man Guard (一夫当关)
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "一夫当关").first():
+             item = models.ItemCard(
+                name="一夫当关",
+                description="仅自身扣分，不会波及其他人。",
+                function_desc="One Man Guard: Only user loses stars.",
+                image_path="11.jpg",
+                do_type=0,
+                probability=1.0
+            )
+             db.add(item)
+             print("Added missing card: 一夫当关")
+
+        # Update images for special cards if empty (Migration Fix)
+        special_card_images = {
+            "末日审判": "25.jpg",
+            "群体沉默": "23.jpg",
+            "军团荣耀": "22.jpg",
+            "暗影突袭": "21.jpg",
+            "狂战士试炼": "20.jpg",
+            "法力汲取": "19.jpg",
+            "潜行斗篷": "18.jpg",
+            "结界：庇护所": "17.jpg",
+            "黑暗诅咒": "16.jpg",
+            "净化术": "15.jpg",
+            "深渊凝视": "14.jpg",
+            "皇城PK": "13.jpg",
+            "连锁闪电": "12.jpg",
+            "一夫当关": "11.jpg",
+            "普渡众生": "24.jpg"
+        }
+        
+        for name, img in special_card_images.items():
+            card = db.query(models.ItemCard).filter(models.ItemCard.name == name).first()
+            if card and (not card.image_path or card.image_path == ""):
+                card.image_path = img
+                db.add(card)
+                print(f"Updated image for: {name}")
+
         db.commit()
     except Exception as e:
         print(f"Error checking special cards: {e}")

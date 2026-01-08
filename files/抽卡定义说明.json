@@ -1,0 +1,102 @@
+[
+    {
+        "id": 1, "name": "绝对防御", "description": "免答", "function_desc": "免答一次问题", "image_path": "1.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 2, "name": "标记目标", "description": "指定一人回答", "function_desc": "随机一个人回答", "image_path": "2.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 3, "name": "经验药水", "description": "额外加一颗", "function_desc": "额外增加1星", "image_path": "3.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 4, "name": "Boss 挑战券", "description": "问老师，老师输加星", "function_desc": "问老师一个问题，老师答不出来就加1星，否则清零", "image_path": "4.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 5, "name": "再来一个", "description": "再答一个", "function_desc": "需要再答一个问题", "image_path": "5.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 6, "name": "生命圣水", "description": "快乐水一瓶", "function_desc": "恢复本次扣分", "image_path": "6.jpg", "do_type": 1,
+        "probability": 0.0125
+    },
+    {
+        "id": 7, "name": "命运轮盘", "description": "天使与魔鬼 (90/10)", "function_desc": "90%是老师请你吃中午饭，10%你请老师吃中午饭", "image_path": "7.jpg", "do_type": 1,
+        "probability": 0.0125
+    },
+    {
+        "id": 8, "name": "深渊凝视", "description": "天堂与地狱 (40/60)", "function_desc": "30%是加3颗星，70%清零。", "image_path": "8.jpg", "do_type": 1,
+        "probability": 0.05
+    },
+    {
+        "id": 9, "name": "背水一战", "description": "连答 (加3或清零)", "function_desc": "再答一个问题，答对得2星，答错扣2星", "image_path": "9.jpg", "do_type": 1,
+        "probability": 0.05
+    },
+    {
+        "id": 10, "name": "法力汲取", "description": "吸取一人星星", "function_desc": "随机吸取一个人的2颗星，如果对方没有星星则反噬，扣除自己一颗星", "image_path": "10.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 11, "name": "皇城 PK", "description": "决对卡 (PK)", "function_desc": "随机抽取一人进行对决，双方轮流相互提问，回答不出来扣星，直到一方为0。\n\n对方拒绝直接吸取一星。", "image_path": "11.jpg", "do_type": 1,
+        "probability": 0.05
+    },
+    {
+        "id": 12, "name": "吟游诗人", "description": "指定唱歌", "function_desc": "唱歌得1星，并且可以邀请某一个人一起，对方也得1星", "image_path": "12.jpg", "do_type": 1,
+        "probability": 0.05
+    },
+    {
+        "id": 13, "name": "连锁闪电", "description": "闪电卡 (传导/扣星)", "function_desc": "概率性扣自己2个星，如果没中，继承到下一个人，最多继承3次", "image_path": "13.jpg", "do_type": 0,
+        "probability": 0.1111
+    },
+    {
+        "id": 14, "name": "结界：庇护所", "description": "宿舍免答", "function_desc": "宿舍全员免答一次", "image_path": "14.jpg", "do_type": 1,
+        "probability": 0.025
+    },
+    {
+        "id": 15, "name": "潜行斗篷", "description": "隐身 (免中5次)", "function_desc": "接下来五次抽取免抽", "image_path": "15.jpg", "do_type": 1,
+        "probability": 0.025
+    },
+    {
+        "id": 16, "name": "军团荣耀", "description": "宿舍全员加1星", "function_desc": "宿舍全员加1星", "image_path": "16.jpg", "do_type": 1,
+        "probability": 0.025
+    },
+    {
+        "id": 17, "name": "群体沉默", "description": "宿舍全员减1星", "function_desc": "宿舍全员扣除1星", "image_path": "17.jpg", "do_type": 0,
+        "probability": 0.3333
+    },
+    {
+        "id": 18, "name": "暗影突袭", "description": "借刀杀人", "function_desc": "随机一个人扣除1星", "image_path": "18.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 19, "name": "末日审判", "description": "万箭齐发 (全员扣)", "function_desc": "全员扣除1星", "image_path": "19.jpg", "do_type": 0,
+        "probability": 0.1111
+    },
+    {
+        "id": 20, "name": "黑暗诅咒", "description": "坠入深渊 (设负星)", "function_desc": "自身将可以陷入负分状态", "image_path": "20.jpg", "do_type": 0,
+        "probability": 0.1111
+    },
+    {
+        "id": 21, "name": "净化术", "description": "回到人间 (取消负)", "function_desc": "可以从负分状态回到0分", "image_path": "21.jpg", "do_type": 1,
+        "probability": 0.025
+    },
+    {
+        "id": 22, "name": "契约：预支", "description": "贷款", "function_desc": "本节课可以提前加星，最多3个。下节课必须首先回答问题。", "image_path": "22.jpg", "do_type": 1,
+        "probability": 0.05
+    },
+    {
+        "id": 23, "name": "狂战士试炼", "description": "俯卧撑20个", "function_desc": "随机抽取一人俯卧撑20个。", "image_path": "23.jpg", "do_type": 1,
+        "probability": 0.075
+    },
+    {
+        "id": 24, "name": "普渡众生", "description": "全班所有学生星级 +1。", "function_desc": "全部人员加1星", "image_path": "24.jpg", "do_type": 1,
+        "probability": 0.025
+    },
+    {
+        "id": 25, "name": "一夫当关", "description": "一个人抗下所有", "function_desc": "仅自身扣分，不会波及其他人", "image_path": "25.jpg", "do_type": 0,
+        "probability": 0.3333
+    }
+]

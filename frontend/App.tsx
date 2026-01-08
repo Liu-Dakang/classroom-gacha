@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Sparkles, Star, Trophy, RefreshCw, Award, BarChart3, Users, Download, Upload, ThumbsDown, X, Trash2 } from 'lucide-react';
+import { Sparkles, Star, Trophy, RefreshCw, Award, BarChart3, Users, Download, Upload, ThumbsDown, X, Trash2, Skull } from 'lucide-react';
 import Card from './components/Card';
 import ShieldEffect from './components/ShieldEffect';
 import MarkTargetEffect from './components/MarkTargetEffect';
@@ -13,10 +13,17 @@ import ManaDrainEffect from './components/ManaDrainEffect';
 import StealthCloakEffect from './components/StealthCloakEffect';
 import SanctuaryEffect from './components/SanctuaryEffect';
 import UniversalSalvationEffect from './components/UniversalSalvationEffect';
+import DarkCurseEffect from './components/DarkCurseEffect';
+import PurificationEffect from './components/PurificationEffect';
+import AbyssalGazeEffect from './components/AbyssalGazeEffect';
+import OneManGuardEffect from './components/OneManGuardEffect';
+import RoyalPKEffect from './components/RoyalPKEffect';
+import ChainLightningEffect from './components/ChainLightningEffect';
 import RouletteEffect from './components/RouletteEffect';
 import { RARITY_CONFIG } from './constants';
 import { Student, RarityLevel, Stats, ItemCard as ItemCardType, StudentItem } from './types';
 import ItemCard from './components/ItemCard';
+import { playSound } from './utils/sound';
 
 export default function App() {
   // --- State ---
@@ -40,7 +47,9 @@ export default function App() {
           dormNumber: s.dorm_number,
           stars: s.stars,
           pickCount: s.pick_count,
-          immunity: s.immunity || 0
+          pickCount: s.pick_count,
+          immunity: s.immunity || 0,
+          isCursed: s.is_cursed || false
         }));
         setStudents(mappedStudents);
       }
@@ -70,6 +79,9 @@ export default function App() {
   const [showRoulette, setShowRoulette] = useState(false);
   const [rouletteItems, setRouletteItems] = useState<ItemCardType[]>([]);
   const [pendingDrawnItem, setPendingDrawnItem] = useState<ItemCardType | null>(null);
+  const [pkOpponent, setPkOpponent] = useState<Student | null>(null);
+
+  const [chainPath, setChainPath] = useState<{ student: Student; status: 'hit' | 'miss' }[]>([]);
   const [pendingTargetStudentId, setPendingTargetStudentId] = useState<number | null>(null);
 
   // File input ref for import
@@ -83,7 +95,9 @@ export default function App() {
         name: student.name,
         dorm_number: student.dormNumber,
         stars: student.stars,
-        pick_count: student.pickCount
+        pick_count: student.pickCount,
+        immunity: student.immunity,
+        is_cursed: student.isCursed
       };
 
       await fetch(`${API_URL}/students/${student.id}`, {
@@ -164,9 +178,60 @@ export default function App() {
       setDrawnItem(item);
       setActiveEffect("mass_silence");
       fetchStudentItems(studentId);
+      playSound("群体沉默");
     } else if (item.name === "末日审判") {
       setDrawnItem(item);
       setActiveEffect("doomsday");
+      fetchStudentItems(studentId);
+      playSound("末日审判");
+    } else if (item.name === "黑暗诅咒") {
+      setDrawnItem(item);
+      setActiveEffect("dark_curse");
+      fetchStudentItems(studentId);
+      playSound("黑暗诅咒");
+    } else if (item.name === "一夫当关") {
+      setDrawnItem(item);
+      setActiveEffect("one_man_guard");
+      fetchStudentItems(studentId);
+    } else if (item.name === "连锁闪电") {
+      setDrawnItem(item);
+      // Calculate chain immediately
+      const initialTarget = students.find(s => s.id === studentId);
+      if (initialTarget) {
+        let currentPool = students.filter(s => s.id !== initialTarget.id);
+        let path = [];
+        let currentTarget = initialTarget;
+        let jumps = 0;
+        let isHit = false;
+
+        // First step (Self)
+        // 50% chance
+        if (Math.random() < 0.5) {
+          path.push({ student: currentTarget, status: 'hit' });
+          isHit = true;
+        } else {
+          path.push({ student: currentTarget, status: 'miss' });
+        }
+
+        // Jumps
+        while (!isHit && jumps < 3 && currentPool.length > 0) {
+          jumps++;
+          // Pick next random
+          const nextIndex = Math.floor(Math.random() * currentPool.length);
+          currentTarget = currentPool[nextIndex];
+          // Remove from pool to avoid duplicates
+          currentPool.splice(nextIndex, 1);
+
+          if (Math.random() < 0.5) {
+            path.push({ student: currentTarget, status: 'hit' as const });
+            isHit = true;
+          } else {
+            path.push({ student: currentTarget, status: 'miss' as const });
+          }
+        }
+        setChainPath(path);
+        setActiveEffect("chain_lightning");
+      }
       fetchStudentItems(studentId);
     } else {
       setDrawnItem(item);
@@ -194,6 +259,7 @@ export default function App() {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("shield");
+      playSound("绝对防御");
     } else if (studentItem.item_card.name === "标记目标") {
       // Logic for "Mark Target":
       // 1. Trigger Effect UI (Random Shuffle)
@@ -203,10 +269,12 @@ export default function App() {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("mark_target");
+      playSound("标记目标");
     } else if (studentItem.item_card.name === "经验药水") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("exp_potion");
+      playSound("经验药水");
     } else if (studentItem.item_card.name === "军团荣耀") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
@@ -215,32 +283,58 @@ export default function App() {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("shadow_raid");
+      playSound("暗影突袭");
     } else if (studentItem.item_card.name === "狂战士试炼") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("berserker_trial");
+      playSound("狂战士试炼");
     } else if (studentItem.item_card.name === "法力汲取") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("mana_drain");
-      setPreviewItem(null);
-      setPendingItemId(studentItem.id);
-      setActiveEffect("mana_drain");
+      playSound("法力汲取");
     } else if (studentItem.item_card.name === "潜行斗篷") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("stealth_cloak");
+      playSound("隐身");
     } else if (studentItem.item_card.name === "结界：庇护所") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("sanctuary");
-      setPreviewItem(null);
-      setPendingItemId(studentItem.id);
-      setActiveEffect("sanctuary");
+      playSound("结界：庇护所");
     } else if (studentItem.item_card.name === "普渡众生") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("universal_salvation");
+      playSound("普渡众生");
+    } else if (studentItem.item_card.name === "净化术") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("purification");
+    } else if (studentItem.item_card.name === "深渊凝视") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("abyssal_gaze");
+      playSound("深渊凝视");
+    } else if (studentItem.item_card.name === "皇城PK") {
+      console.log("Triggering Royal PK");
+      // Pick random opponent
+      const otherStudents = students.filter(s => s.id !== studentItem.student_id);
+      console.log("Opponent pool size:", otherStudents.length);
+
+      if (otherStudents.length > 0) {
+        const opponent = otherStudents[Math.floor(Math.random() * otherStudents.length)];
+        console.log("Selected opponent:", opponent.name);
+        setPkOpponent(opponent);
+        setPreviewItem(null);
+        setPendingItemId(studentItem.id);
+        setActiveEffect("royal_pk");
+        playSound("皇城PK");
+      } else {
+        alert("没有对手！");
+      }
     } else {
       await executeUseItem(studentItem.id);
       setPreviewItem(null);
@@ -392,6 +486,123 @@ export default function App() {
       });
     }
 
+    // Dark Curse Logic
+    if (activeEffect === "dark_curse") {
+      const user = drawnStudent || manualSelection;
+      if (user) {
+        // Update local state first to feel responsive? Or wait for backend.
+        // Let's optimistic update.
+        setStudents(prev => prev.map(s => s.id === user.id ? { ...s, isCursed: true } : s));
+
+        // Call Backend
+        // We need a specific endpoint or just update student.
+        // Using updateStudentOnBackend might check existing state? 
+        // `updateStudentOnBackend` takes a `Student` object.
+        // We can construct it.
+        const updatedUser = { ...user, isCursed: true };
+        updateStudentOnBackend(updatedUser);
+
+        // Remove "Dark Curse" item from inventory immediately
+        try {
+          const res = await fetch(`${API_URL}/students/${user.id}/items`);
+          if (res.ok) {
+            const items: StudentItem[] = await res.json();
+            const curseItem = items.find(i => i.item_card.name === "黑暗诅咒");
+            if (curseItem) {
+              await executeUseItem(curseItem.id);
+            }
+          }
+        } catch (e) { console.error(e); }
+      }
+    }
+
+    // Purification Logic
+    if (activeEffect === "purification") {
+      const user = drawnStudent || manualSelection;
+      if (user) {
+        let newStars = user.stars;
+        if (newStars < 0) newStars = 0;
+
+        const updatedUser = {
+          ...user,
+          isCursed: false,
+          stars: newStars
+        };
+
+        // Optimistic update
+        setStudents(prev => prev.map(s => s.id === user.id ? updatedUser : s));
+        if (drawnStudent && drawnStudent.id === user.id) setDrawnStudent(updatedUser);
+        if (manualSelection && manualSelection.id === user.id) setManualSelection(updatedUser);
+
+        updateStudentOnBackend(updatedUser);
+      }
+    }
+
+    // Abyssal Gaze Logic
+    if (activeEffect === "abyssal_gaze") {
+      const user = drawnStudent || manualSelection;
+      const isSuccess = payload === true; // payload passed from effect
+      if (user) {
+        if (isSuccess) {
+          // Success: +3 Stars
+          handleManualStarChange(user.id, 3);
+        } else {
+          // Fail: Reset to 0
+          const updatedUser = { ...user, stars: 0 };
+          setStudents(prev => prev.map(s => s.id === user.id ? updatedUser : s));
+          if (drawnStudent && drawnStudent.id === user.id) setDrawnStudent(updatedUser);
+          if (manualSelection && manualSelection.id === user.id) setManualSelection(updatedUser);
+          updateStudentOnBackend(updatedUser);
+
+
+        }
+      }
+    }
+
+    // One Man Guard Logic
+    if (activeEffect === "one_man_guard") {
+      const user = drawnStudent || manualSelection;
+      if (user) {
+        // Apply single target penalty
+        handleManualStarChange(user.id, -1);
+
+        // Remove item from inventory
+        try {
+          const res = await fetch(`${API_URL}/students/${user.id}/items`);
+          if (res.ok) {
+            const items: StudentItem[] = await res.json();
+            const guardItem = items.find(i => i.item_card.name === "一夫当关");
+            if (guardItem) {
+              await executeUseItem(guardItem.id);
+            }
+          }
+        } catch (e) { console.error(e); }
+      }
+    }
+
+    // Royal PK Logic
+    if (activeEffect === "royal_pk") {
+      const user = drawnStudent || manualSelection;
+      // payload is winnerId
+      if (user && payload === user.id) {
+        handleManualStarChange(user.id, 1);
+      }
+      setPkOpponent(null);
+    }
+
+
+
+
+    // Chain Lightning Logic
+    if (activeEffect === "chain_lightning") {
+      chainPath.forEach(step => {
+        if (step.status === 'hit') {
+          handleManualStarChange(step.student.id, -2);
+        }
+      });
+      setChainPath([]);
+    }
+
     // If item was used from inventory (pendingItemId is set)
     if (pendingItemId) {
       await executeUseItem(pendingItemId);
@@ -464,6 +675,7 @@ export default function App() {
     setDrawnStudent(null);
     setStudentItems([]);
     setIsInteractionComplete(false);
+    playSound('roll');
 
     // 1. Priority Pool: Never picked students AND NOT IMMUNE
     const neverPicked = students.filter(s => s.pickCount === 0 && (!s.immunity || s.immunity <= 0));
@@ -479,7 +691,7 @@ export default function App() {
       // Weight formula: 60 / (stars + 1)
       let weightedPool: number[] = [];
       students.filter(s => !s.immunity || s.immunity <= 0).forEach(student => {
-        const weight = Math.floor(60 / (student.stars + 1));
+        const weight = Math.floor(60 / (Math.max(0, student.stars) + 1));
         for (let i = 0; i < weight; i++) {
           weightedPool.push(student.id);
         }
@@ -519,8 +731,12 @@ export default function App() {
 
     setStudents(prev => prev.map(s => {
       if (s.id === drawnStudent.id) {
-        // Calculate new stars, clamped min 0, no max
-        const newStars = Math.max(0, s.stars + starChange);
+        // Calculate new stars
+        // If student is cursed, allow negative. Else clamp at 0.
+        let newStars = s.stars + starChange;
+        if (!s.isCursed) {
+          newStars = Math.max(0, newStars);
+        }
 
         const updatedStudent = {
           ...s,
@@ -534,6 +750,7 @@ export default function App() {
     }));
 
     if (starChange > 0) {
+      playSound('success_roll'); // Correct answer sound
       // Trigger level up animation
       setDrawnStudent(prev => prev ? ({ ...prev, stars: prev.stars + 1 }) : null);
       setShowLevelUp(true);
@@ -549,6 +766,7 @@ export default function App() {
       // Wrong Answer / Skip
       // If Wrong (starChange < 0), draw NEGATIVE card
       if (starChange < 0 && drawnStudent) {
+        playSound('fail');
         setTimeout(() => {
           drawItem(drawnStudent.id, 'negative');
         }, 500);
@@ -574,7 +792,13 @@ export default function App() {
   const handleManualStarChange = (studentId: number, change: number) => {
     setStudents(prev => prev.map(s => {
       if (s.id === studentId) {
-        const newStars = Math.max(0, s.stars + change);
+        let newStars = s.stars + change;
+        if (!s.isCursed) {
+          newStars = Math.max(0, newStars);
+        }
+
+
+
         const updatedStudent = { ...s, stars: newStars };
 
         // Update the modal view as well
@@ -627,6 +851,10 @@ export default function App() {
 
   const sortedByStars = useMemo(() =>
     [...students].sort((a, b) => b.stars - a.stars || b.pickCount - a.pickCount),
+    [students]);
+
+  const sortedByNegativeStars = useMemo(() =>
+    [...students].filter(s => s.stars < 0).sort((a, b) => a.stars - b.stars),
     [students]);
 
   // CSS injection for keyframes
@@ -762,17 +990,26 @@ export default function App() {
                 {sortedByStars.filter(s => s.stars > 0).slice(0, 5).map((student, i) => {
                   const rKey = (student.stars >= 0 && student.stars <= 5 ? student.stars : 0) as RarityLevel;
                   return (
-                    <div key={student.id} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700/30">
+                    <div key={student.id} className={`flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border ${student.isCursed ? 'border-purple-500/50' : 'border-slate-700/30'}`}>
                       <div className="font-bold text-sm text-slate-500 w-4">{i + 1}</div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-slate-200">{student.name}</span>
-                          <span className={`text-[10px] px-1 rounded border ${RARITY_CONFIG[rKey].color} ${RARITY_CONFIG[rKey].border} bg-opacity-20`}>
-                            {RARITY_CONFIG[rKey].label}
-                          </span>
+                          <span className={`text-sm font-medium ${student.isCursed ? 'text-white' : 'text-slate-200'}`}>{student.name}</span>
+                          {/* Rarity Label (Only for positive stars) */}
+                          {student.stars >= 0 && (
+                            <span className={`text-[10px] px-1 rounded border ${RARITY_CONFIG[rKey].color} ${RARITY_CONFIG[rKey].border} bg-opacity-20`}>
+                              {RARITY_CONFIG[rKey].label}
+                            </span>
+                          )}
+                          {/* Cursed Label */}
+                          {student.isCursed && (
+                            <span className="text-[10px] px-1 rounded border border-purple-500 text-purple-400 bg-purple-900/30">
+                              CURSED
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="font-bold text-yellow-500 font-mono text-xs">
+                      <div className={`font-bold font-mono text-xs ${student.stars < 0 ? 'text-purple-400' : 'text-yellow-500'}`}>
                         {student.stars} ★
                       </div>
                     </div>
@@ -785,6 +1022,35 @@ export default function App() {
                 )}
               </div>
             </div>
+
+
+            {/* Cursed Rank (Negative Stars) */}
+            {sortedByNegativeStars.length > 0 && (
+              <div className="bg-slate-900/60 backdrop-blur-md border border-purple-700/50 p-4 rounded-xl shadow-2xl animate-in slide-in-from-right duration-500 delay-200">
+                <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Skull size={12} />
+                  魔丸榜 (负分排行)
+                </h3>
+                <div className="space-y-2">
+                  {sortedByNegativeStars.slice(0, 5).map((student, i) => (
+                    <div key={student.id} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-purple-500/30">
+                      <div className="font-bold text-sm text-purple-500 w-4">{i + 1}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-white">{student.name}</span>
+                          <span className="text-[10px] px-1 rounded border border-purple-500 text-purple-400 bg-purple-900/30">
+                            CURSED
+                          </span>
+                        </div>
+                      </div>
+                      <div className="font-bold font-mono text-xs text-purple-400">
+                        {student.stars} ★
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -939,179 +1205,207 @@ export default function App() {
       </div>
 
       {/* --- Manual Adjustment Modal --- */}
-      {manualSelection && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-          onClick={() => setManualSelection(null)}
-        >
+      {
+        manualSelection && (
           <div
-            className="bg-slate-800 rounded-2xl border border-slate-600 p-6 max-w-sm w-full shadow-2xl relative flex flex-col items-center gap-6"
-            onClick={e => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+            onClick={() => setManualSelection(null)}
           >
-            <button
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-              onClick={() => setManualSelection(null)}
+            <div
+              className="bg-slate-800 rounded-2xl border border-slate-600 p-6 max-w-sm w-full shadow-2xl relative flex flex-col items-center gap-6"
+              onClick={e => e.stopPropagation()}
             >
-              <X size={24} />
-            </button>
-
-            <h3 className="text-xl font-bold text-slate-200">手动调整</h3>
-
-            <Card student={manualSelection} isRevealed={true} size="large" />
-
-            {/* Inventory in Modal */}
-            {studentItems.length > 0 && (
-              <div className="w-full">
-                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">我的卡包</h4>
-                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                  {studentItems.map(si => (
-                    <div key={si.id} onClick={() => setPreviewItem(si)} className="cursor-pointer flex-shrink-0 transition-transform duration-300 hover:scale-105 active:scale-95">
-                      <ItemCard item={si.item_card} size="small" showDetails={false} className="w-24 h-32" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-4 w-full justify-center">
               <button
-                onClick={() => handleManualStarChange(manualSelection.id, -1)}
-                className="flex-1 py-3 bg-red-500/20 border border-red-500/50 hover:bg-red-500/30 text-red-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+                className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+                onClick={() => setManualSelection(null)}
               >
-                <ThumbsDown size={18} /> 降星
+                <X size={24} />
               </button>
+
+              <h3 className="text-xl font-bold text-slate-200">手动调整</h3>
+
+              <Card student={manualSelection} isRevealed={true} size="large" />
+
+              {/* Inventory in Modal */}
+              {studentItems.length > 0 && (
+                <div className="w-full">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">我的卡包</h4>
+                  <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                    {studentItems.map(si => (
+                      <div key={si.id} onClick={() => setPreviewItem(si)} className="cursor-pointer flex-shrink-0 transition-transform duration-300 hover:scale-105 active:scale-95">
+                        <ItemCard item={si.item_card} size="small" showDetails={false} className="w-24 h-32" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-4 w-full justify-center">
+                <button
+                  onClick={() => handleManualStarChange(manualSelection.id, -1)}
+                  className="flex-1 py-3 bg-red-500/20 border border-red-500/50 hover:bg-red-500/30 text-red-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+                >
+                  <ThumbsDown size={18} /> 降星
+                </button>
+                <button
+                  onClick={() => handleManualStarChange(manualSelection.id, 1)}
+                  className="flex-1 py-3 bg-green-500/20 border border-green-500/50 hover:bg-green-500/30 text-green-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+                >
+                  <Award size={18} /> 升星
+                </button>
+              </div>
+
               <button
-                onClick={() => handleManualStarChange(manualSelection.id, 1)}
-                className="flex-1 py-3 bg-green-500/20 border border-green-500/50 hover:bg-green-500/30 text-green-200 rounded-xl flex items-center justify-center gap-2 font-bold transition-all hover:scale-105 active:scale-95"
+                onClick={() => {
+                  if (window.confirm(`确定要删除学生 ${manualSelection.name} 吗？此操作不可恢复。`)) {
+                    deleteStudentOnBackend(manualSelection.id);
+                  }
+                }}
+                className="w-full py-2 bg-slate-700/50 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-lg text-sm transition-colors border border-transparent hover:border-red-900"
               >
-                <Award size={18} /> 升星
+                删除该学生
               </button>
             </div>
-
-            <button
-              onClick={() => {
-                if (window.confirm(`确定要删除学生 ${manualSelection.name} 吗？此操作不可恢复。`)) {
-                  deleteStudentOnBackend(manualSelection.id);
-                }
-              }}
-              className="w-full py-2 bg-slate-700/50 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-lg text-sm transition-colors border border-transparent hover:border-red-900"
-            >
-              删除该学生
-            </button>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* --- Item Draw Modal --- */}
-      {showItemModal && drawnItem && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
-          onClick={() => setShowItemModal(false)}
-        >
+      {
+        showItemModal && drawnItem && (
           <div
-            className="flex flex-col items-center gap-6 animate-in zoom-in-50 duration-500"
-            onClick={e => e.stopPropagation()}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
+            onClick={() => setShowItemModal(false)}
           >
-            <div className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
-              获得卡牌！
-            </div>
-
-            <ItemCard item={drawnItem} size="large" showDetails={true} />
-
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold text-white">{drawnItem.name}</h2>
-              <p className="text-indigo-200 tex-sm max-w-sm">{drawnItem.description}</p>
-            </div>
-
-            <button
-              onClick={() => setShowItemModal(false)}
-              className="mt-4 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-amber-950 font-black rounded-full shadow-lg shadow-amber-500/20 transition-all hover:scale-105"
+            <div
+              className="flex flex-col items-center gap-6 animate-in zoom-in-50 duration-500"
+              onClick={e => e.stopPropagation()}
             >
-              收下 (Keep)
-            </button>
+              <div className="text-4xl font-black text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
+                获得卡牌！
+              </div>
+
+              <ItemCard item={drawnItem} size="large" showDetails={true} />
+
+              <div className="text-center space-y-2">
+                <h2 className="text-2xl font-bold text-white">{drawnItem.name}</h2>
+                <p className="text-indigo-200 tex-sm max-w-sm">{drawnItem.description}</p>
+              </div>
+
+              <button
+                onClick={() => setShowItemModal(false)}
+                className="mt-4 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-amber-950 font-black rounded-full shadow-lg shadow-amber-500/20 transition-all hover:scale-105"
+              >
+                收下 (Keep)
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* --- Item Preview Modal --- */}
-      {previewItem && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
-          onClick={() => setPreviewItem(null)}
-        >
-          <div className="relative animate-in zoom-in-75 duration-300" onClick={e => e.stopPropagation()}>
-            <div className="flex flex-col items-center gap-6">
-              <ItemCard item={previewItem.item_card} size="large" showDetails={true} className="shadow-2xl shadow-amber-500/20 scale-125" />
+      {
+        previewItem && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300"
+            onClick={() => setPreviewItem(null)}
+          >
+            <div className="relative animate-in zoom-in-75 duration-300" onClick={e => e.stopPropagation()}>
+              <div className="flex flex-col items-center gap-6">
+                <ItemCard item={previewItem.item_card} size="large" showDetails={true} className="shadow-2xl shadow-amber-500/20 scale-125" />
 
-              <div className="flex gap-4 mt-8">
-                <button
-                  onClick={() => setPreviewItem(null)}
-                  className="px-6 py-2 rounded-full border border-slate-500 text-slate-300 hover:bg-slate-800 transition-colors"
-                >
-                  返回 (Return)
-                </button>
-                <button
-                  onClick={() => {
-                    useItem(previewItem);
-                  }}
-                  className="px-8 py-2 rounded-full bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 transition-transform hover:scale-105"
-                >
-                  使用 (Use)
-                </button>
+                <div className="flex gap-4 mt-8">
+                  <button
+                    onClick={() => setPreviewItem(null)}
+                    className="px-6 py-2 rounded-full border border-slate-500 text-slate-300 hover:bg-slate-800 transition-colors"
+                  >
+                    返回 (Return)
+                  </button>
+                  <button
+                    onClick={() => {
+                      useItem(previewItem);
+                    }}
+                    className="px-8 py-2 rounded-full bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 transition-transform hover:scale-105"
+                  >
+                    使用 (Use)
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {showRoulette && pendingDrawnItem && (
-        <RouletteEffect
-          items={rouletteItems}
-          finalItem={pendingDrawnItem}
-          onComplete={handleRouletteComplete}
-        />
-      )}
+      {
+        showRoulette && pendingDrawnItem && (
+          <RouletteEffect
+            items={rouletteItems}
+            finalItem={pendingDrawnItem}
+            onComplete={handleRouletteComplete}
+          />
+        )
+      }
       {activeEffect === 'shield' && <ShieldEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'mark_target' && (
-        <MarkTargetEffect
-          students={students.filter(s => s.id !== drawnStudent?.id)} // Exclude current student? Or include? Usually replace means someone else.
-          onComplete={(victim) => handleEffectComplete(victim)}
-        />
-      )}
+      {
+        activeEffect === 'mark_target' && (
+          <MarkTargetEffect
+            students={students.filter(s => s.id !== drawnStudent?.id)} // Exclude current student? Or include? Usually replace means someone else.
+            onComplete={(victim) => handleEffectComplete(victim)}
+          />
+        )
+      }
       {activeEffect === 'exp_potion' && <ExpPotionEffect onComplete={() => handleEffectComplete()} />}
       {activeEffect === 'mass_silence' && <MassSilenceEffect onComplete={() => handleEffectComplete()} />}
       {activeEffect === 'doomsday' && <DoomsdayEffect onComplete={() => handleEffectComplete()} />}
       {activeEffect === 'legion_glory' && <LegionGloryEffect onComplete={() => handleEffectComplete()} />}
-      {activeEffect === 'shadow_raid' && (
-        <ShadowRaidEffect
-          students={students}
-          onComplete={(victim) => handleEffectComplete(victim)}
-        />
-      )}
-      {activeEffect === 'berserker_trial' && (
-        <BerserkerTrialEffect
-          students={students}
-          onComplete={(winner) => handleEffectComplete(winner)}
-        />
-      )}
-      {activeEffect === 'mana_drain' && (
-        <ManaDrainEffect
-          user={drawnStudent || manualSelection!}
-          students={students}
-          onComplete={(result) => {
-            // Placeholder for handleEffectComplete logic
-            // In a real scenario, this would be part of the handleEffectComplete function
-            if (activeEffect === 'universal_salvation') {
-              students.forEach(s => handleManualStarChange(s.id, 1));
-            }
-            // Original logic for mana_drain
-            handleEffectComplete(result);
-          }}
-        />
-      )}
+      {
+        activeEffect === 'shadow_raid' && (
+          <ShadowRaidEffect
+            students={students}
+            onComplete={(victim) => handleEffectComplete(victim)}
+          />
+        )
+      }
+      {
+        activeEffect === 'berserker_trial' && (
+          <BerserkerTrialEffect
+            students={students}
+            onComplete={(winner) => handleEffectComplete(winner)}
+          />
+        )
+      }
+      {
+        activeEffect === 'mana_drain' && (
+          <ManaDrainEffect
+            user={drawnStudent || manualSelection!}
+            students={students}
+            onComplete={(result) => {
+              // Placeholder for handleEffectComplete logic
+              // In a real scenario, this would be part of the handleEffectComplete function
+              if (activeEffect === 'universal_salvation') {
+                students.forEach(s => handleManualStarChange(s.id, 1));
+              }
+              // Original logic for mana_drain
+              handleEffectComplete(result);
+            }}
+          />
+        )
+      }
       {activeEffect === 'stealth_cloak' && <StealthCloakEffect onComplete={() => handleEffectComplete()} />}
       {activeEffect === 'sanctuary' && <SanctuaryEffect onComplete={() => handleEffectComplete()} />}
       {activeEffect === 'universal_salvation' && <UniversalSalvationEffect onComplete={() => handleEffectComplete()} />}
-    </div>
+      {activeEffect === 'dark_curse' && <DarkCurseEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'purification' && <PurificationEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'abyssal_gaze' && <AbyssalGazeEffect onComplete={(success) => handleEffectComplete(success)} />}
+      {activeEffect === 'one_man_guard' && <OneManGuardEffect onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'royal_pk' && pkOpponent && (drawnStudent || manualSelection) && (
+        <RoyalPKEffect
+          user={drawnStudent || manualSelection!}
+          opponent={pkOpponent}
+          onComplete={(winnerId) => handleEffectComplete(winnerId)}
+        />
+      )}
+      {activeEffect === 'chain_lightning' && <ChainLightningEffect chainPath={chainPath} onComplete={() => handleEffectComplete()} />}
+    </div >
   );
 }

@@ -7,6 +7,7 @@ class StudentBase(BaseModel):
     stars: int = 0
     pick_count: int = 0
     immunity: int = 0
+    is_cursed: bool = False
 
 class StudentCreate(StudentBase):
     pass
@@ -22,6 +23,8 @@ class ItemCardBase(BaseModel):
     description: str | None = None
     function_desc: str | None = None
     image_path: str | None = None
+    do_type: int = 1
+    probability: float = 1.0
 
 class ItemCard(ItemCardBase):
     id: int

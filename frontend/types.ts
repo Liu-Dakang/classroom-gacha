@@ -5,6 +5,7 @@ export interface Student {
   stars: number;
   pickCount: number;
   immunity: number;
+  isCursed?: boolean;
 }
 
 export interface RarityConfigItem {

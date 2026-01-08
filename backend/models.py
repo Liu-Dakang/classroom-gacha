@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Float
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -11,6 +11,7 @@ class Student(Base):
     stars = Column(Integer, default=0)
     pick_count = Column(Integer, default=0)
     immunity = Column(Integer, default=0)
+    is_cursed = Column(Boolean, default=False)
 
     items = relationship("StudentItem", back_populates="student", cascade="all, delete-orphan")
 
@@ -22,6 +23,8 @@ class ItemCard(Base):
     description = Column(String) # Original meaning / Description
     function_desc = Column(String) # Functional description
     image_path = Column(String) 
+    do_type = Column(Integer, default=1) # 0: Negative, 1: Positive
+    probability = Column(Float, default=1.0)
 
 class StudentItem(Base):
     __tablename__ = "student_items"

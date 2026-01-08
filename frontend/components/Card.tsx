@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Star, Shield } from 'lucide-react';
+import { Star, Shield, Skull } from 'lucide-react';
 import { RARITY_CONFIG } from '../constants';
 import { Student, RarityLevel } from '../types';
 import Particles from './Particles';
@@ -97,7 +97,13 @@ const Card: React.FC<CardProps> = ({
   return (
     <div className={`
       relative ${sizeClasses} rounded-xl border-4 transition-all duration-500
-      ${student.immunity > 0 ? 'border-cyan-400 bg-slate-900 shadow-[0_0_20px_rgba(34,211,238,0.8)] scale-[1.02]' : `${config.border} ${config.bg} ${config.shadow} shadow-lg`} 
+      relative ${sizeClasses} rounded-xl border-4 transition-all duration-500
+      ${student.immunity > 0
+        ? 'border-cyan-400 bg-slate-900 shadow-[0_0_20px_rgba(34,211,238,0.8)] scale-[1.02]'
+        : student.isCursed
+          ? 'border-purple-600 bg-slate-900 shadow-[0_0_15px_rgba(147,51,234,0.6)]'
+          : `${config.border} ${config.bg} ${config.shadow} shadow-lg`
+      } 
       ${size === 'small' ? 'flex justify-between' : 'flex flex-col items-center justify-center'}
       ${isHolo ? 'animate-holo-shine overflow-hidden' : ''}
       ${className}
@@ -133,7 +139,7 @@ const Card: React.FC<CardProps> = ({
       </div>
 
       {/* Avatar / Name */}
-      <div className={`z-10 font-bold text-slate-800 ${size === 'large' ? 'scale-110' : ''} flex flex-col items-center`}>
+      <div className={`z-10 font-bold ${student.isCursed ? 'text-white' : 'text-slate-800'} ${size === 'large' ? 'scale-110' : ''} flex flex-col items-center`}>
         <span>{student.name}</span>
         {student.dormNumber && (
           <span className={`font-normal text-slate-500 font-mono ${size === 'large' ? 'text-sm' : 'text-[10px]'}`}>
@@ -142,21 +148,44 @@ const Card: React.FC<CardProps> = ({
         )}
       </div>
 
-      {/* Stars */}
+      {/* Stars or Cursed Skulls */}
       <div className={`z-10 flex flex-col items-center gap-1 ${size === 'small' ? '' : 'mt-4 px-2'}`}>
         {size !== 'small' && (
           <div className="flex flex-wrap justify-center gap-1">
-            {[...Array(Math.max(5, student.stars))].map((_, i) => (
-              <Star
-                key={i}
-                size={20}
-                className={`${i < student.stars ? 'fill-yellow-400 text-yellow-500' : 'fill-slate-700 text-slate-600'} transition-all duration-300`}
-              />
-            ))}
+            {student.stars < 0 ? (
+              // Negative Stars (Cursed)
+              [...Array(Math.min(5, Math.abs(student.stars)))].map((_, i) => (
+                <Skull key={i} size={20} className="text-purple-500 animate-pulse" />
+              ))
+            ) : (
+              // Positive Stars
+              [...Array(Math.max(5, student.stars))].map((_, i) => (
+                <Star
+                  key={i}
+                  size={20}
+                  className={`${i < student.stars ? 'fill-yellow-400 text-yellow-500' : 'fill-slate-700 text-slate-600'} transition-all duration-300`}
+                />
+              ))
+            )}
           </div>
         )}
-        <span className="text-xs font-bold text-slate-500 font-mono tracking-widest">{student.stars} STARS</span>
+        <span className={`text-xs font-bold font-mono tracking-widest ${student.stars < 0 ? 'text-purple-400' : 'text-slate-500'}`}>
+          {student.stars} STARS
+        </span>
       </div>
+
+      {/* Cursed Indicator Badge */}
+      {student.isCursed && (
+        <div className={`
+              absolute z-20 flex items-center justify-center 
+              ${size === 'small'
+            ? 'bottom-1 left-28 text-purple-500'
+            : 'top-2 right-2 text-purple-500 bg-black/50 rounded-full p-1 border border-purple-500/50'
+          }
+          `} title="Cursed: Can go below 0 stars">
+          <Skull size={size === 'small' ? 14 : 20} className={size === 'small' ? '' : 'animate-pulse'} />
+        </div>
+      )}
 
       {/* Rank Title (Large only) */}
       {
