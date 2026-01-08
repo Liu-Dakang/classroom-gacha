@@ -12,6 +12,7 @@ interface Props {
 
 const ItemCard: React.FC<Props> = ({ item, onClick, size = 'small', showDetails = false, className = '' }) => {
     const [isHovered, setIsHovered] = useState(false);
+    const [imgError, setImgError] = useState(false);
     const API_URL = 'http://localhost:8000'; // Make global const later if needed
 
     return (
@@ -26,11 +27,12 @@ const ItemCard: React.FC<Props> = ({ item, onClick, size = 'small', showDetails 
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {item.image_path ? (
+            {item.image_path && !imgError ? (
                 <img
                     src={`${API_URL}/static/images/${item.image_path}`}
                     alt={item.name}
                     className="w-full h-full object-cover"
+                    onError={() => setImgError(true)}
                 />
             ) : (
                 <div className="w-full h-full bg-slate-800 flex items-center justify-center">
