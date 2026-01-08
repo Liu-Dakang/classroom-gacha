@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Sparkles, Star, Trophy, RefreshCw, Award, BarChart3, Users, Download, Upload, ThumbsDown, X, Trash2, Skull } from 'lucide-react';
+import { Sparkles, Star, Trophy, RefreshCw, Award, BarChart3, Users, Download, Upload, ThumbsDown, X, Trash2, Skull, LogOut } from 'lucide-react';
 import Card from './components/Card';
 import ShieldEffect from './components/ShieldEffect';
 import MarkTargetEffect from './components/MarkTargetEffect';
@@ -24,6 +24,8 @@ import RouletteEffect from './components/RouletteEffect';
 import { RARITY_CONFIG } from './constants';
 import { Student, RarityLevel, Stats, ItemCard as ItemCardType, StudentItem } from './types';
 import ItemCard from './components/ItemCard';
+import Login from './components/Login';
+import AdminPanel from './components/AdminPanel';
 import { playSound } from './utils/sound';
 
 export default function App() {
@@ -32,22 +34,67 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const API_URL = 'http://localhost:8000';
 
+  // Auth State
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('username'));
+  const [isAdmin, setIsAdmin] = useState<boolean>(localStorage.getItem('isAdmin') === 'true');
+
+  const handleLogin = (newToken: string, username: string, admin: boolean) => {
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('username', username);
+    localStorage.setItem('isAdmin', String(admin));
+    setToken(newToken);
+    setCurrentUser(username);
+    setIsAdmin(admin);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('isAdmin');
+    setToken(null);
+    setCurrentUser(null);
+    setIsAdmin(false);
+    setStudents([]);
+  };
+
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const headers: HeadersInit = {
+      ...options.headers,
+      'Authorization': `Bearer ${token}`
+    };
+
+    try {
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 401) {
+        handleLogout();
+        throw new Error("Unauthorized");
+      }
+      return res;
+    } catch (e) {
+      throw e;
+    }
+  };
+
   useEffect(() => {
-    fetchStudents();
-  }, []);
+    if (token && !isAdmin) {
+      fetchStudents();
+    }
+  }, [token, isAdmin]);
+
+
 
   const fetchStudents = async () => {
+    if (!token) return;
     try {
-      const response = await fetch(`${API_URL}/students`);
+      const response = await authFetch(`${API_URL}/students`);
       if (response.ok) {
         const data = await response.json();
-        // Map backend snake_case to frontend camelCase
         const mappedStudents = data.map((s: any) => ({
           id: s.id,
           name: s.name,
           dormNumber: s.dorm_number,
           stars: s.stars,
-          pickCount: s.pick_count,
           pickCount: s.pick_count,
           immunity: s.immunity || 0,
           isCursed: s.is_cursed || false
@@ -101,7 +148,7 @@ export default function App() {
         is_cursed: student.isCursed
       };
 
-      await fetch(`${API_URL}/students/${student.id}`, {
+      await authFetch(`${API_URL}/students/${student.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -115,7 +162,7 @@ export default function App() {
 
   const deleteStudentOnBackend = async (id: number) => {
     try {
-      await fetch(`${API_URL}/students/${id}`, {
+      await authFetch(`${API_URL}/students/${id}`, {
         method: 'DELETE',
       });
       setStudents(prev => prev.filter(s => s.id !== id));
@@ -129,9 +176,9 @@ export default function App() {
 
   const fetchStudentItems = async (studentId: number) => {
     try {
-      const response = await fetch(`${API_URL}/students/${studentId}/items`);
-      if (response.ok) {
-        const data = await response.json();
+      const res = await authFetch(`${API_URL}/students/${studentId}/items`);
+      if (res.ok) {
+        const data = await res.json();
         setStudentItems(data);
       }
     } catch (error) {
@@ -141,9 +188,9 @@ export default function App() {
 
   const fetchAllItems = async () => {
     try {
-      const response = await fetch(`${API_URL}/items`);
-      if (response.ok) {
-        return await response.json();
+      const res = await authFetch(`${API_URL}/items`);
+      if (res.ok) {
+        return await res.json();
       }
     } catch (error) {
       console.error("Failed to fetch items pool:", error);
@@ -153,9 +200,9 @@ export default function App() {
 
   const drawItem = async (studentId: number, poolType: string = 'normal') => {
     try {
-      const response = await fetch(`${API_URL}/students/${studentId}/draw_item?pool_type=${poolType}`, { method: 'POST' });
-      if (response.ok) {
-        const item = await response.json();
+      const res = await authFetch(`${API_URL}/students/${studentId}/draw_item?pool_type=${poolType}`, { method: 'POST' });
+      if (res.ok) {
+        const item = await res.json();
         // Prepare Roulette
         const pool = await fetchAllItems();
         setRouletteItems(pool);
@@ -247,8 +294,10 @@ export default function App() {
 
   const executeUseItem = async (itemId: number) => {
     try {
-      await fetch(`${API_URL}/student_items/${itemId}`, { method: 'DELETE' });
-      setStudentItems(prev => prev.filter(i => i.id !== itemId));
+      const res = await authFetch(`${API_URL}/student_items/${itemId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setStudentItems(prev => prev.filter(i => i.id !== itemId));
+      }
     } catch (error) {
       console.error("Failed to use item:", error);
     }
@@ -406,7 +455,7 @@ export default function App() {
       // We use the API directly to avoid state dependency issues if possible, or use current state.
       if (drawnStudent) {
         try {
-          const res = await fetch(`${API_URL}/students/${drawnStudent.id}/items`);
+          const res = await authFetch(`${API_URL}/students/${drawnStudent.id}/items`);
           if (res.ok) {
             const items: StudentItem[] = await res.json();
             const silenceItem = items.find(i => i.item_card.name === "群体沉默");
@@ -427,7 +476,7 @@ export default function App() {
       // Try to delete item from inventory (similar logic to mass silence)
       if (drawnStudent) {
         try {
-          const res = await fetch(`${API_URL}/students/${drawnStudent.id}/items`);
+          const res = await authFetch(`${API_URL}/students/${drawnStudent.id}/items`);
           if (res.ok) {
             const items: StudentItem[] = await res.json();
             const doomItem = items.find(i => i.item_card.name === "末日审判");
@@ -481,7 +530,7 @@ export default function App() {
       const user = drawnStudent || manualSelection;
       if (user) {
         try {
-          await fetch(`${API_URL}/students/${user.id}/immunity?immunity=3`, { method: 'PUT' });
+          await authFetch(`${API_URL}/students/${user.id}/immunity?immunity=3`, { method: 'PUT' });
           // We delay fetch just a bit or assume handleDraw next time will get fresh data
         } catch (e) { console.error(e); }
       }
@@ -495,7 +544,7 @@ export default function App() {
         for (const mate of dormMates) {
           const newImmunity = Math.max(mate.immunity || 0, 1);
           try {
-            await fetch(`${API_URL}/students/${mate.id}/immunity?immunity=${newImmunity}`, { method: 'PUT' });
+            await authFetch(`${API_URL}/students/${mate.id}/immunity?immunity=${newImmunity}`, { method: 'PUT' });
           } catch (e) { console.error(e); }
         }
       }
@@ -527,7 +576,7 @@ export default function App() {
 
         // Remove "Dark Curse" item from inventory immediately
         try {
-          const res = await fetch(`${API_URL}/students/${user.id}/items`);
+          const res = await authFetch(`${API_URL}/students/${user.id}/items`);
           if (res.ok) {
             const items: StudentItem[] = await res.json();
             const curseItem = items.find(i => i.item_card.name === "黑暗诅咒");
@@ -591,7 +640,7 @@ export default function App() {
 
         // Remove item from inventory
         try {
-          const res = await fetch(`${API_URL}/students/${user.id}/items`);
+          const res = await authFetch(`${API_URL}/students/${user.id}/items`);
           if (res.ok) {
             const items: StudentItem[] = await res.json();
             const guardItem = items.find(i => i.item_card.name === "一夫当关");
@@ -664,23 +713,12 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-
-    if (!window.confirm('确认导入该Excel文件吗？这将覆盖当前所有数据。\nConfirm import? This will overwrite all data.')) {
-      return;
-    }
-
+  const handleImportExcel = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${API_URL}/import_excel`, {
+      const response = await authFetch(`${API_URL}/import_excel`, {
         method: 'POST',
         body: formData,
       });
@@ -930,6 +968,14 @@ export default function App() {
       animation: summon-spin 3s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
     }
   `;
+
+  if (!token) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  if (isAdmin) {
+    return <AdminPanel token={token} onLogout={handleLogout} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans selection:bg-indigo-500 overflow-hidden flex flex-col md:flex-row">
@@ -1185,6 +1231,15 @@ export default function App() {
               <BarChart3 className="text-indigo-400" size={20} />
               班级风云榜
             </h2>
+            <div className="flex gap-2">
+              <button onClick={handleLogout} title="退出登录" className="text-slate-500 hover:text-white"><LogOut size={16} /></button>
+              <button onClick={async () => {
+                if (window.confirm("确定要注销班级账号吗？所有数据将丢失！")) {
+                  await authFetch(`${API_URL}/users/me`, { method: 'DELETE' });
+                  handleLogout();
+                }
+              }} title="注销账号" className="text-slate-500 hover:text-red-500"><Trash2 size={16} /></button>
+            </div>
           </div>
 
           {/* Data Controls */}
@@ -1206,7 +1261,10 @@ export default function App() {
             <input
               type="file"
               ref={fileInputRef}
-              onChange={handleImport}
+              onChange={(e) => {
+                if (e.target.files?.[0]) handleImportExcel(e.target.files[0]);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
               className="hidden"
               accept=".xlsx, .xls"
             />
@@ -1415,12 +1473,6 @@ export default function App() {
             user={drawnStudent || manualSelection!}
             students={students}
             onComplete={(result) => {
-              // Placeholder for handleEffectComplete logic
-              // In a real scenario, this would be part of the handleEffectComplete function
-              if (activeEffect === 'universal_salvation') {
-                students.forEach(s => handleManualStarChange(s.id, 1));
-              }
-              // Original logic for mana_drain
               handleEffectComplete(result);
             }}
           />

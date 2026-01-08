@@ -12,6 +12,11 @@ import random
 import os
 import sys
 from sqlalchemy import text # Import text for raw sql
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta, timezone
+from starlette import status
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -44,14 +49,162 @@ def check_db_schema():
             db.execute(text("ALTER TABLE item_cards ADD COLUMN do_type INTEGER DEFAULT 1"))
             db.execute(text("ALTER TABLE item_cards ADD COLUMN probability FLOAT DEFAULT 1.0"))
             db.commit()
+
+        # Check owner_id column in students
+        try:
+            db.execute(text("SELECT owner_id FROM students LIMIT 1"))
+        except Exception:
+            print("adding owner_id column to students...")
+            db.execute(text("ALTER TABLE students ADD COLUMN owner_id INTEGER"))
+            db.commit()
+
     except Exception as e:
         print(f"Schema check error: {e}")
     finally:
         db.close()
 
+
+# Validates or seeds admin
+def seed_admin_user():
+    db = SessionLocal()
+    try:
+        admin = db.query(models.User).filter(models.User.username == "admin").first()
+        if not admin:
+            hashed_pwd = pwd_context.hash("admin")
+            admin_user = models.User(username="admin", hashed_password=hashed_pwd, is_admin=True)
+            db.add(admin_user)
+            db.commit()
+            print("Seeded Admin User (admin/admin)")
+    except Exception as e:
+        # Table might not exist yet if fresh start, but create_all runs before this
+        print(f"Admin seed warning: {e}")
+    finally:
+        db.close()
+
 check_db_schema()
 
+# Auth Config
+SECRET_KEY = "your-secret-key-super-secret"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30 # 30 Days
+
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = schemas.TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    user = db.query(models.User).filter(models.User.username == token_data.username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
 app = FastAPI()
+
+seed_admin_user()
+
+@app.post("/token", response_model=schemas.Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/users", response_model=schemas.Token)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    # Register endpoint
+    db_user = db.query(models.User).filter(models.User.username == user.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    hashed_password = get_password_hash(user.password)
+    db_user = models.User(username=user.username, hashed_password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    # Auto login
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me", response_model=schemas.User)
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
+    return current_user
+
+@app.delete("/users/me")
+async def delete_me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Can delete own account
+    if current_user.is_admin:
+        raise HTTPException(status_code=400, detail="Admin cannot be deleted this way")
+    db.delete(current_user)
+    db.commit()
+    return {"message": "Account deleted"}
+
+@app.get("/admin/users", response_model=List[schemas.User])
+async def read_all_users(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return db.query(models.User).all()
+
+@app.delete("/admin/users/{user_id}")
+async def delete_user_by_admin(user_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    user_to_delete = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user_to_delete:
+         raise HTTPException(status_code=404, detail="User not found")
+    if user_to_delete.username == "admin":
+         raise HTTPException(status_code=400, detail="Cannot delete super admin")
+         
+    db.delete(user_to_delete)
+    db.commit()
+    return {"message": "User deleted"}
 
 # --- Helpers ---
 def get_frontend_path():
@@ -71,22 +224,17 @@ app.add_middleware(
 # Mount static files for images
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 # --- Students ---
 @app.get("/students", response_model=List[schemas.Student])
-def read_students(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
-    students = db.query(models.Student).all()
+def read_students(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    students = db.query(models.Student).filter(models.Student.owner_id == current_user.id).all()
     return students
 
 @app.put("/students/{student_id}/immunity")
-def update_student_immunity(student_id: int, immunity: int, db: Session = Depends(get_db)):
-    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+def update_student_immunity(student_id: int, immunity: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    student = db.query(models.Student).filter(models.Student.id == student_id, models.Student.owner_id == current_user.id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     student.immunity = immunity
@@ -95,15 +243,17 @@ def update_student_immunity(student_id: int, immunity: int, db: Session = Depend
     return student
 
 @app.post("/advance_turn")
-def advance_turn(db: Session = Depends(get_db)):
-    # Decrement immunity for all students where immunity > 0
-    db.execute(text("UPDATE students SET immunity = immunity - 1 WHERE immunity > 0"))
+def advance_turn(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Decrement immunity for all students of current user where immunity > 0
+    # SQLite doesn't support JOIN in UPDATE easily for some versions, but we can do:
+    # UPDATE students SET immunity = immunity - 1 WHERE owner_id = :uid AND immunity > 0
+    db.execute(text("UPDATE students SET immunity = immunity - 1 WHERE owner_id = :uid AND immunity > 0"), {"uid": current_user.id})
     db.commit()
     return {"message": "Turn advanced"}
 
 @app.put("/students/{student_id}", response_model=schemas.Student)
-def update_student(student_id: int, student: schemas.StudentCreate, db: Session = Depends(get_db)):
-    db_student = db.query(models.Student).filter(models.Student.id == student_id).first()
+def update_student(student_id: int, student: schemas.StudentCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_student = db.query(models.Student).filter(models.Student.id == student_id, models.Student.owner_id == current_user.id).first()
     if not db_student:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -119,8 +269,8 @@ def update_student(student_id: int, student: schemas.StudentCreate, db: Session 
     return db_student
 
 @app.delete("/students/{student_id}")
-def delete_student(student_id: int, db: Session = Depends(get_db)):
-    db_student = db.query(models.Student).filter(models.Student.id == student_id).first()
+def delete_student(student_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_student = db.query(models.Student).filter(models.Student.id == student_id, models.Student.owner_id == current_user.id).first()
     if not db_student:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -129,7 +279,7 @@ def delete_student(student_id: int, db: Session = Depends(get_db)):
     return {"message": "Student deleted successfully"}
 
 @app.post("/import_excel")
-async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if not file.filename.endswith(('.xls', '.xlsx')):
          raise HTTPException(status_code=400, detail="Invalid file format. Please upload an Excel file.")
 
@@ -144,29 +294,53 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             if "Name" in first_cell or "姓名" in first_cell:
                 start_row = 1
         
-        db.query(models.Student).delete()
-        # Also clear all student items as students are gone
-        db.query(models.StudentItem).delete()
+        # Delete only CURRENT USER's students
+        # db.query(models.Student).filter(models.Student.owner_id == current_user.id).delete()
+        # Cascade delete of items handles StudentItem, but to be sure/safe or if cascade not set on DB level (it is in model):
+        # We rely on SQLAlchemy logic. But `delete()` query sometimes skips ORM hooks.
+        # But we added `cascade="all, delete-orphan"` to relationship.
+        # However, for bulk delete `db.query().delete()`, we need `synchronize_session=False`.
+        # AND manually delete related items if no DB FK constraint with cascade.
+        # We'll trust SQLite FKs are NOT enabled by default usually, so we should delete manually or iterate.
+        # Iterating is safer for small classes.
+        
+        # Re-approach: first select invalid IDs? Hard.
+        # Let's delete manually to be safe.
+        # items_to_delete = db.query(models.StudentItem).join(models.Student).filter(models.Student.owner_id == current_user.id).delete(synchronize_session=False)
+        # ^ This JOIN delete support varies in SQLite.
+        
+        # Simple approach for now:
+        existing_students = db.query(models.Student).filter(models.Student.owner_id == current_user.id).all()
+        for s in existing_students:
+            db.delete(s) # This triggers cascade
         
         count = 0
         for index, row in df.iloc[start_row:].iterrows():
             if len(row) < 1:
                 continue
-            name = str(row[0]).strip()
-            dorm = str(row[1]).strip() if len(row) > 1 else None
             
+            name = str(row[0]).strip()
             if not name or name == 'nan':
-                continue
-
-            student = models.Student(name=name, dorm_number=dorm, stars=0, pick_count=0)
-            db.add(student)
+                 continue
+            
+            dorm = None
+            if len(row) > 1:
+                 dorm = str(row[1]).strip()
+                 if dorm == 'nan': dorm = None
+            
+            db_student = models.Student(
+                name=name,
+                dorm_number=dorm,
+                stars=0, # Reset stars
+                owner_id=current_user.id # Assign owner
+            )
+            db.add(db_student)
             count += 1
-        
+            
         db.commit()
-        return {"message": "Import successful", "count": count}
-        
+        return {"message": f"Successfully imported {count} students"}
     except Exception as e:
-        db.rollback()
+        print(f"Import Error: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 # --- Items ---
@@ -177,9 +351,9 @@ def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return items
 
 @app.post("/students/{student_id}/draw_item", response_model=schemas.ItemCard)
-def draw_item_for_student(student_id: int, pool_type: str = "normal", db: Session = Depends(get_db)):
-    # Verify student exists
-    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+def draw_item_for_student(student_id: int, pool_type: str = "normal", db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Verify student exists and belongs to current user
+    student = db.query(models.Student).filter(models.Student.id == student_id, models.Student.owner_id == current_user.id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
@@ -228,12 +402,18 @@ def draw_item_for_student(student_id: int, pool_type: str = "normal", db: Sessio
     return drawn_item
 
 @app.get("/students/{student_id}/items", response_model=List[schemas.StudentItem])
-def get_student_items(student_id: int, db: Session = Depends(get_db)):
+def get_student_items(student_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Verify student ownership first
+    student = db.query(models.Student).filter(models.Student.id == student_id, models.Student.owner_id == current_user.id).first()
+    if not student:
+         raise HTTPException(status_code=404, detail="Student not found")
+         
     return db.query(models.StudentItem).filter(models.StudentItem.student_id == student_id).all()
 
 @app.delete("/student_items/{item_id}")
-def use_student_item(item_id: int, db: Session = Depends(get_db)):
-    item = db.query(models.StudentItem).filter(models.StudentItem.id == item_id).first()
+def use_student_item(item_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Join with Student to check owner
+    item = db.query(models.StudentItem).join(models.Student).filter(models.StudentItem.id == item_id, models.Student.owner_id == current_user.id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     

@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: gacha-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Map the backend directory to persist sql_app.db and static files
+      # This also allows editing python code on host to reflect (after restart if changed)
+      - ./backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    build: ./frontend
+    container_name: gacha-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    # If API_URL in App.tsx is hardcoded to localhost:8000, 
+    # the browser (on host) will hit host:8000 which maps to backend:8000. 
+    # So this works out of the box.

@@ -2,6 +2,16 @@ from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Float
 from sqlalchemy.orm import relationship
 from database import Base
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    is_admin = Column(Boolean, default=False)
+
+    students = relationship("Student", back_populates="owner", cascade="all, delete-orphan")
+
 class Student(Base):
     __tablename__ = "students"
 
@@ -12,7 +22,9 @@ class Student(Base):
     pick_count = Column(Integer, default=0)
     immunity = Column(Integer, default=0)
     is_cursed = Column(Boolean, default=False)
+    owner_id = Column(Integer, ForeignKey("users.id")) # Link to User (Class)
 
+    owner = relationship("User", back_populates="students")
     items = relationship("StudentItem", back_populates="student", cascade="all, delete-orphan")
 
 class ItemCard(Base):

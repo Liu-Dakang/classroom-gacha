@@ -93,7 +93,7 @@ export default function MarkTargetEffect({ students, onComplete }: MarkTargetEff
 
                     <div className={`transform transition-all duration-200 ${!isRunning ? 'scale-110 drop-shadow-[0_0_25px_rgba(239,68,68,0.6)]' : ''}`}>
                         <Card
-                            student={displayedStudent || { id: -1, name: '???', stars: 0, pickCount: 0 }}
+                            student={displayedStudent || { id: -1, name: '???', stars: 0, pickCount: 0, immunity: 0, isCursed: false }}
                             isRevealed={true}
                             size="large"
                         />
