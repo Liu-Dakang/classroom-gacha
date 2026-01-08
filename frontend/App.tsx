@@ -18,6 +18,7 @@ import PurificationEffect from './components/PurificationEffect';
 import AbyssalGazeEffect from './components/AbyssalGazeEffect';
 import OneManGuardEffect from './components/OneManGuardEffect';
 import RoyalPKEffect from './components/RoyalPKEffect';
+import DestinyRouletteEffect from './components/DestinyRouletteEffect';
 import ChainLightningEffect from './components/ChainLightningEffect';
 import RouletteEffect from './components/RouletteEffect';
 import { RARITY_CONFIG } from './constants';
@@ -231,6 +232,7 @@ export default function App() {
         }
         setChainPath(path);
         setActiveEffect("chain_lightning");
+        playSound("连锁闪电");
       }
       fetchStudentItems(studentId);
     } else {
@@ -253,6 +255,7 @@ export default function App() {
   };
 
   const useItem = async (studentItem: StudentItem) => {
+    console.log("Using item:", studentItem.item_card.name, "ID:", studentItem.item_card.id);
     if (!window.confirm("确认使用这张卡片吗？使用后将销毁。")) return;
 
     if (studentItem.item_card.name === "绝对防御") {
@@ -313,6 +316,22 @@ export default function App() {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
       setActiveEffect("purification");
+      playSound("净化术");
+    } else if (studentItem.item_card.name === "生命圣水") {
+      await executeUseItem(studentItem.id);
+      setPreviewItem(null);
+      playSound("生命圣水");
+      alert("使用了生命圣水！");
+    } else if (studentItem.item_card.name === "吟游诗人") {
+      await executeUseItem(studentItem.id);
+      setPreviewItem(null);
+      playSound("吟游诗人");
+      alert("使用了吟游诗人！");
+    } else if (studentItem.item_card.name.toLowerCase() === "boss挑战券") {
+      await executeUseItem(studentItem.id);
+      setPreviewItem(null);
+      playSound("boss挑战券");
+      alert("使用了boss挑战券！");
     } else if (studentItem.item_card.name === "深渊凝视") {
       setPreviewItem(null);
       setPendingItemId(studentItem.id);
@@ -335,6 +354,10 @@ export default function App() {
       } else {
         alert("没有对手！");
       }
+    } else if (studentItem.item_card.name === "命运轮盘") {
+      setPreviewItem(null);
+      setPendingItemId(studentItem.id);
+      setActiveEffect("destiny_roulette");
     } else {
       await executeUseItem(studentItem.id);
       setPreviewItem(null);
@@ -588,6 +611,18 @@ export default function App() {
         handleManualStarChange(user.id, 1);
       }
       setPkOpponent(null);
+    }
+
+    // Destiny Roulette Logic
+    if (activeEffect === "destiny_roulette" && payload) {
+      const user = drawnStudent || manualSelection;
+      if (user) {
+        if (payload === 'angel') {
+          handleManualStarChange(user.id, 10);
+        } else {
+          handleManualStarChange(user.id, -1);
+        }
+      }
     }
 
 
@@ -1406,6 +1441,7 @@ export default function App() {
         />
       )}
       {activeEffect === 'chain_lightning' && <ChainLightningEffect chainPath={chainPath} onComplete={() => handleEffectComplete()} />}
+      {activeEffect === 'destiny_roulette' && <DestinyRouletteEffect onComplete={(result) => handleEffectComplete(result)} />}
     </div >
   );
 }

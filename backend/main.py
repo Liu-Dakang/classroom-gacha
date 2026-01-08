@@ -470,6 +470,60 @@ def ensure_special_cards_exist():
              db.add(item)
              print("Added missing card: 一夫当关")
 
+        # Check Destiny Roulette (命运轮盘)
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "命运轮盘").first():
+             item = models.ItemCard(
+                name="命运轮盘",
+                description="特殊效果，当使用时，将会出现两张牌，牌面分别为天使与魔鬼。然后翻转牌面开始洗牌。天使概率为0.1，恶魔概率为0.9",
+                function_desc="Destiny Roulette: 10% Angel (+10★), 90% Devil (-1★).",
+                image_path="", # Will be fixed by updated fixer or manual
+                do_type=1,
+                probability=1.0
+            )
+             db.add(item)
+             print("Added missing card: 命运轮盘")
+
+        # Check Life Elixir (生命圣水)
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "生命圣水").first():
+             item = models.ItemCard(
+                name="生命圣水",
+                description="使用后播放音效，象征生命恢复。",
+                function_desc="Life Elixir: Play sound.",
+                image_path="", 
+                do_type=1,
+                probability=1.0
+            )
+             db.add(item)
+             print("Added missing card: 生命圣水")
+
+        # Check Bard (吟游诗人)
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "吟游诗人").first():
+             item = models.ItemCard(
+                name="吟游诗人",
+                description="使用后播放音效，象征激励。",
+                function_desc="Bard: Play sound.",
+                image_path="", 
+                do_type=1,
+                probability=1.0
+            )
+             db.add(item)
+             print("Added missing card: 吟游诗人")
+
+        # Check Boss Ticket (BOSS挑战券)
+        # Check both cases just to be sure we seed one standard one
+        if not db.query(models.ItemCard).filter(models.ItemCard.name == "BOSS挑战券").first() and \
+           not db.query(models.ItemCard).filter(models.ItemCard.name == "boss挑战券").first():
+             item = models.ItemCard(
+                name="BOSS挑战券",
+                description="挑战强大的BOSS，胜者获得丰厚奖励。",
+                function_desc="Boss Ticket: Challenge Boss event.",
+                image_path="", 
+                do_type=1,
+                probability=1.0
+            )
+             db.add(item)
+             print("Added missing card: BOSS挑战券")
+
         # Update images for special cards if empty (Migration Fix)
         special_card_images = {
             "末日审判": "25.jpg",
